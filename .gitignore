@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Hardhat / Solidity
+cache/
+artifacts/
+typechain/
+typechain-types/
+coverage/
+coverage.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.nyc_output/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Secrets - NEVER COMMIT
+*.pem
+*.key
+secrets.json
+.secret
+mnemonic.txt

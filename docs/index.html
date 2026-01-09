@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel Finance - Documentation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #252525;
+            --bg-card: #2a2a2a;
+            --border-color: #ffcc00;
+            --text-primary: #ffcc00;
+            --text-secondary: #e6b800;
+            --text-muted: #b38f00;
+            --accent-blue: #0066ff;
+            --accent-cyan: #00ccff;
+            --accent-emerald: #00cc66;
+            --accent-amber: #ffcc00;
+            --accent-red: #ff3b30;
+            --accent-purple: #9933ff;
+            --font-pixel: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --shadow-hard: 4px 4px 0px 0px #ffcc00;
+        }
+        
+        body {
+            font-family: var(--font-pixel);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            background-image: 
+                linear-gradient(rgba(255, 204, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 204, 0, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        
+        .header {
+            background: var(--bg-card);
+            border-bottom: 4px solid var(--border-color);
+            padding: 0 32px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .logo-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .logo-icon svg { stroke: var(--bg-primary); }
+        
+        .logo-text {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -1px;
+            color: var(--text-primary);
+        }
+        
+        .logo-text span { color: var(--accent-cyan); }
+        
+        .header-links {
+            display: flex;
+            gap: 24px;
+        }
+        
+        .header-links a {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            padding: 8px 16px;
+            border: 2px solid transparent;
+            transition: all 0.1s;
+        }
+        
+        .header-links a:hover {
+            border-color: var(--border-color);
+            background: var(--bg-secondary);
+        }
+        
+        .header-links a.primary {
+            background: var(--border-color);
+            color: var(--bg-primary);
+            border-color: var(--border-color);
+        }
+        
+        .header-links a.primary:hover {
+            background: var(--text-secondary);
+            border-color: var(--text-secondary);
+        }
+        
+        .layout {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 80px);
+        }
+        
+        .sidebar {
+            width: 280px;
+            background: var(--bg-card);
+            border-right: 2px solid var(--border-color);
+            padding: 24px 0;
+            position: sticky;
+            top: 80px;
+            height: calc(100vh - 80px);
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 24px;
+        }
+        
+        .sidebar-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            padding: 0 24px;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+        
+        .sidebar-link {
+            display: block;
+            padding: 10px 24px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            border-left: 3px solid transparent;
+            transition: all 0.1s;
+        }
+        
+        .sidebar-link:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        
+        .sidebar-link.active {
+            background: var(--bg-secondary);
+            color: var(--accent-cyan);
+            border-left-color: var(--accent-cyan);
+            font-weight: 700;
+        }
+        
+        .main-content {
+            flex: 1;
+            padding: 40px 60px;
+            max-width: 900px;
+        }
+        
+        .content-section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .content-section.active { display: block; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        h1 {
+            font-size: 36px;
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+            color: var(--text-primary);
+        }
+        
+        h2 {
+            font-size: 24px;
+            margin: 40px 0 16px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        h3 {
+            font-size: 18px;
+            margin: 24px 0 12px 0;
+            color: var(--text-primary);
+        }
+        
+        .subtitle {
+            font-size: 16px;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+        }
+        
+        p { margin-bottom: 16px; color: var(--text-secondary); }
+        
+        ul, ol { color: var(--text-secondary); }
+        
+        .card {
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            padding: 24px;
+            margin: 24px 0;
+            box-shadow: var(--shadow-hard);
+        }
+        
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 2px solid;
+        }
+        
+        .badge.get { background: rgba(0, 204, 102, 0.2); color: #00cc66; border-color: #00cc66; }
+        .badge.post { background: rgba(0, 102, 255, 0.2); color: #0066ff; border-color: #0066ff; }
+        .badge.put { background: rgba(255, 204, 0, 0.2); color: #ffcc00; border-color: #ffcc00; }
+        .badge.delete { background: rgba(255, 59, 48, 0.2); color: #ff3b30; border-color: #ff3b30; }
+        
+        .code-block {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 20px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 16px 0;
+            border: 2px solid var(--border-color);
+        }
+        
+        .code-block .comment { color: #6a9955; }
+        .code-block .string { color: #ce9178; }
+        .code-block .keyword { color: #569cd6; }
+        .code-block .number { color: #b5cea8; }
+        
+        code {
+            background: var(--bg-secondary);
+            padding: 2px 6px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        .endpoint {
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            margin: 24px 0;
+        }
+        
+        .endpoint-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            cursor: pointer;
+        }
+        
+        .endpoint-header:hover { background: var(--bg-card); }
+        
+        .endpoint-path {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .endpoint-desc {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-left: auto;
+        }
+        
+        .endpoint-body {
+            padding: 20px;
+            display: none;
+        }
+        
+        .endpoint.open .endpoint-body { display: block; }
+        
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+        
+        .param-table th {
+            background: var(--border-color);
+            color: var(--bg-primary);
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 11px;
+        }
+        
+        .param-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--bg-secondary);
+            color: var(--text-secondary);
+        }
+        
+        .param-table td:first-child {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .required { color: var(--accent-red); font-size: 10px; }
+        
+        .faq-item {
+            border: 2px solid var(--border-color);
+            margin: 16px 0;
+            background: var(--bg-card);
+        }
+        
+        .faq-question {
+            padding: 16px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        
+        .faq-question:hover { background: var(--bg-card); }
+        
+        .faq-answer {
+            padding: 0 20px;
+            max-height: 0;
+            overflow: hidden;
+            transition: all 0.3s;
+            color: var(--text-secondary);
+        }
+        
+        .faq-item.open .faq-answer {
+            padding: 20px;
+            max-height: 500px;
+        }
+        
+        .faq-item.open .faq-question { border-bottom: 2px solid var(--border-color); }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin: 24px 0;
+        }
+        
+        .feature-card {
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            padding: 20px;
+        }
+        
+        .feature-card h4 {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        
+        .feature-card p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+        
+        .alert {
+            padding: 16px 20px;
+            border: 2px solid;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        
+        .alert.info {
+            background: rgba(0, 102, 255, 0.1);
+            border-color: var(--accent-blue);
+            color: var(--accent-cyan);
+        }
+        
+        .alert.warning {
+            background: rgba(255, 204, 0, 0.1);
+            border-color: var(--accent-amber);
+            color: var(--text-primary);
+        }
+        
+        .alert.danger {
+            background: rgba(255, 59, 48, 0.1);
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+        
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: 2px solid var(--border-color);
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        
+        @media (max-width: 1024px) {
+            .sidebar {
+                position: fixed;
+                left: -300px;
+                top: 80px;
+                z-index: 99;
+                transition: left 0.3s;
+                box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+            }
+            
+            .sidebar.open { left: 0; }
+            
+            .mobile-menu-btn { display: block; }
+            
+            .main-content { padding: 24px; }
+            
+            .feature-grid { grid-template-columns: 1fr; }
+        }
+        
+        @media (max-width: 640px) {
+            .header { padding: 0 16px; }
+            .header-links { display: none; }
+            h1 { font-size: 28px; }
+            .main-content { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo-box">
+            <div class="logo-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <div class="logo-text">SENTINEL <span>DOCS</span></div>
+        </div>
+        
+        <button class="mobile-menu-btn" onclick="toggleSidebar()">MENU</button>
+        
+        <div class="header-links">
+            <a href="https://github.com/sentinel-finance" target="_blank">GitHub</a>
+            <a href="https://sentinelfinance.xyz" class="primary">Launch App</a>
+        </div>
+    </header>
+    
+    <div class="layout">
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">GETTING STARTED</div>
+                <a href="#overview" class="sidebar-link active" onclick="showSection('overview')">Overview</a>
+                <a href="#quickstart" class="sidebar-link" onclick="showSection('quickstart')">Quick Start</a>
+                <a href="#architecture" class="sidebar-link" onclick="showSection('architecture')">Architecture</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">SMART CONTRACTS</div>
+                <a href="#contracts" class="sidebar-link" onclick="showSection('contracts')">Contract Reference</a>
+                <a href="#vault" class="sidebar-link" onclick="showSection('vault')">SentinelVault</a>
+                <a href="#factory" class="sidebar-link" onclick="showSection('factory')">VaultFactory</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">REST API</div>
+                <a href="#api-overview" class="sidebar-link" onclick="showSection('api-overview')">API Overview</a>
+                <a href="#authentication" class="sidebar-link" onclick="showSection('authentication')">Authentication</a>
+                <a href="#endpoints" class="sidebar-link" onclick="showSection('endpoints')">Endpoints</a>
+                <a href="#webhooks" class="sidebar-link" onclick="showSection('webhooks')">Webhooks</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">AI INTEGRATION</div>
+                <a href="#ai-agents" class="sidebar-link" onclick="showSection('ai-agents')">AI Agent Setup</a>
+                <a href="#payment-flow" class="sidebar-link" onclick="showSection('payment-flow')">Payment Flow</a>
+                <a href="#risk-scoring" class="sidebar-link" onclick="showSection('risk-scoring')">Risk Scoring</a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">RESOURCES</div>
+                <a href="#faq" class="sidebar-link" onclick="showSection('faq')">FAQ</a>
+                <a href="#troubleshooting" class="sidebar-link" onclick="showSection('troubleshooting')">Troubleshooting</a>
+                <a href="#changelog" class="sidebar-link" onclick="showSection('changelog')">Changelog</a>
+            </div>
+        </nav>
+        
+        <main class="main-content">
+            <section id="overview" class="content-section active">
+                <h1>Sentinel Finance</h1>
+                <p class="subtitle">AI-Powered Security Infrastructure for MNEE Stablecoin</p>
+                
+                <p>Sentinel Finance provides a secure vault system that protects your MNEE holdings from unauthorized AI agent transactions. With built-in timelocks, spending limits, and real-time risk scoring, you maintain full control while enabling AI automation.</p>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>⏱️ Time-Lock Protection</h4>
+                        <p>All untrusted vendor payments are delayed, giving you time to review and revoke suspicious transactions.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🛡️ Spending Limits</h4>
+                        <p>Set daily and per-transaction limits to cap potential losses from compromised AI agents.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>✅ Trusted Vendors</h4>
+                        <p>Whitelist vendors for instant payments without timelock delays.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📊 Risk Scoring</h4>
+                        <p>AI-powered risk analysis flags suspicious transactions before execution.</p>
+                    </div>
+                </div>
+                
+                <h2>How It Works</h2>
+                <ol style="margin-left: 24px; margin-bottom: 24px;">
+                    <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Create a Vault</strong> - Deploy your personal SentinelVault smart contract</li>
+                    <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Deposit MNEE</strong> - Fund your vault with MNEE tokens</li>
+                    <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Configure Security</strong> - Set limits, timelock duration, and trusted vendors</li>
+                    <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Connect AI Agents</strong> - Your AI can request payments through the vault</li>
+                    <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Monitor & Control</strong> - Review pending transactions and revoke suspicious ones</li>
+                </ol>
+                
+                <div class="alert info">
+                    <strong>Demo Mode Available:</strong> Try Sentinel on Sepolia testnet with free test MNEE tokens before using real funds on mainnet.
+                </div>
+            </section>
+            
+            <section id="risk-scoring" class="content-section">
+                <h1>Risk Scoring</h1>
+                <p class="subtitle">How transaction risk is calculated</p>
+                
+                <p>Sentinel uses a multi-factor risk scoring algorithm to evaluate every transaction. Scores range from 0% (safest) to 100% (highest risk). Transactions exceeding 70% are flagged for immediate review.</p>
+                
+                <h2>Risk Factors</h2>
+                <table class="param-table">
+                    <tr><th>Factor</th><th>Weight</th><th>Trigger Condition</th></tr>
+                    <tr><td>Untrusted Vendor</td><td style="color: var(--accent-red); font-weight: bold;">50%</td><td>Vendor address not in your whitelist</td></tr>
+                    <tr><td>Unknown Agent</td><td style="color: var(--accent-red); font-weight: bold;">40%</td><td>First-ever transaction from this agent</td></tr>
+                    <tr><td>Amount Anomaly</td><td style="color: var(--accent-amber); font-weight: bold;">35%</td><td>Amount exceeds 5x the agent's historical average</td></tr>
+                    <tr><td>Rapid Transactions</td><td style="color: var(--accent-amber); font-weight: bold;">30%</td><td>5+ transactions within 5 minutes from same agent</td></tr>
+                    <tr><td>New Agent</td><td style="color: var(--text-primary); font-weight: bold;">25%</td><td>Agent has fewer than 3 total transactions</td></tr>
+                    <tr><td>Volume Spike</td><td style="color: var(--text-primary); font-weight: bold;">20%</td><td>Recent volume exceeds 10x agent's average</td></tr>
+                </table>
+                
+                <h2>Risk Thresholds</h2>
+                <div class="card">
+                    <p style="margin: 0;"><strong style="color: var(--accent-emerald);">LOW RISK (0-39%)</strong> — Transaction appears normal. Proceeds with standard timelock.</p>
+                </div>
+                <div class="card">
+                    <p style="margin: 0;"><strong style="color: var(--accent-amber);">MEDIUM RISK (40-69%)</strong> — Transaction flagged for review. Alert generated.</p>
+                </div>
+                <div class="card">
+                    <p style="margin: 0;"><strong style="color: var(--accent-red);">HIGH RISK (70-100%)</strong> — Critical alert. Transaction may be auto-blocked. Immediate review required.</p>
+                </div>
+                
+                <h2>Example Scenarios</h2>
+                <p><strong style="color: var(--text-primary);">Scenario 1:</strong> Trusted vendor, known agent, normal amount → <strong style="color: var(--accent-emerald);">0% risk</strong></p>
+                <p><strong style="color: var(--text-primary);">Scenario 2:</strong> Untrusted vendor, known agent, normal amount → <strong style="color: var(--accent-amber);">50% risk</strong></p>
+                <p><strong style="color: var(--text-primary);">Scenario 3:</strong> Untrusted vendor, unknown agent → <strong style="color: var(--accent-red);">90% risk</strong></p>
+                <p><strong style="color: var(--text-primary);">Scenario 4:</strong> Trusted vendor, unknown agent, high amount → <strong style="color: var(--accent-red);">75% risk</strong></p>
+            </section>
+            
+            <section id="authentication" class="content-section">
+                <h1>Authentication</h1>
+                <p class="subtitle">Securing your API requests</p>
+                
+                <h2>API Key</h2>
+                <p>All API requests require an API key passed in the <code>x-api-key</code> header.</p>
+                
+                <div class="code-block">
+curl -X GET https://api.sentinelfinance.xyz/api/v1/vault/balance \
+  -H <span class="string">"x-api-key: your_api_key_here"</span>
+</div>
+                
+                <h2>Generating API Keys</h2>
+                <p>Generate API keys in the Sentinel dashboard under DEV API settings, or programmatically via the <code>python run.py secrets</code> command.</p>
+                
+                <div class="alert danger">
+                    <strong>⚠️ SECURITY WARNING - PRIVATE KEYS:</strong><br><br>
+                    Some API endpoints (like <code>/api/v1/agent/payment</code>) require a private key to sign transactions. <strong>NEVER expose private keys in client-side code, mobile apps, or browser JavaScript.</strong><br><br>
+                    <strong>Best Practices:</strong>
+                    <ul style="margin: 12px 0 0 24px;">
+                        <li>Only call these endpoints from secure server-side code</li>
+                        <li>Store private keys in environment variables or secure vaults (AWS Secrets Manager, HashiCorp Vault)</li>
+                        <li>Use a dedicated agent wallet with limited funds, not your main wallet</li>
+                        <li>Set strict spending limits on the vault as a safety net</li>
+                    </ul>
+                </div>
+                
+                <div class="alert warning">
+                    <strong>API Key Security:</strong> Never expose your API key in client-side code. Use environment variables and server-side requests only.
+                </div>
+                
+                <h2>JWT Tokens (Optional)</h2>
+                <p>For session-based authentication, exchange your API key for a JWT token:</p>
+                <div class="code-block">
+POST /api/v1/auth/token
+Headers: x-api-key: your_api_key
+
+Response:
+{
+    <span class="string">"access_token"</span>: <span class="string">"eyJ..."</span>,
+    <span class="string">"token_type"</span>: <span class="string">"bearer"</span>,
+    <span class="string">"expires_in"</span>: <span class="number">3600</span>
+}
+</div>
+            </section>
+            
+            <section id="quickstart" class="content-section">
+                <h1>Quick Start</h1>
+                <p class="subtitle">Get up and running in 5 minutes</p>
+                
+                <h2>Prerequisites</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>MetaMask or compatible Web3 wallet</li>
+                    <li>ETH for gas fees (Sepolia ETH for testnet)</li>
+                    <li>MNEE tokens (use faucet on testnet)</li>
+                </ul>
+                
+                <h2>Step 1: Connect Wallet</h2>
+                <p>Visit <a href="https://sentinelfinance.xyz" style="color: var(--accent-cyan);">sentinelfinance.xyz</a> and select your network:</p>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li><strong style="color: var(--text-primary);">Demo Mode (Sepolia)</strong> - Free testnet MNEE, perfect for testing</li>
+                    <li><strong style="color: var(--text-primary);">Live Mode (Mainnet)</strong> - Real MNEE protection</li>
+                </ul>
+                
+                <h2>Step 2: Create Your Vault</h2>
+                <p>Click "Create Vault" to deploy your personal SentinelVault contract. This is a one-time transaction.</p>
+                
+                <h2>Step 3: Get Test MNEE (Testnet Only)</h2>
+                <p>Click "Claim Faucet" to receive 1,000 test MNEE tokens. There's a 1-hour cooldown between claims.</p>
+                
+                <h2>Step 4: Deposit to Vault</h2>
+                <p>Transfer MNEE from your wallet to your vault using the deposit button.</p>
+                
+                <h2>Step 5: Configure Security</h2>
+                <p>Go to the CONFIG tab to set:</p>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li><strong style="color: var(--text-primary);">Daily Limit</strong> - Maximum MNEE that can be spent per day</li>
+                    <li><strong style="color: var(--text-primary);">Transaction Limit</strong> - Maximum per single transaction</li>
+                    <li><strong style="color: var(--text-primary);">Timelock Duration</strong> - Delay before untrusted payments execute</li>
+                    <li><strong style="color: var(--text-primary);">Trusted Vendors</strong> - Addresses that bypass timelock</li>
+                </ul>
+            </section>
+            
+            <section id="contracts" class="content-section">
+                <h1>Smart Contract Reference</h1>
+                <p class="subtitle">Deployed contract addresses and ABIs</p>
+                
+                <h2>Sepolia Testnet</h2>
+                <div class="card">
+                    <div class="card-title">MockMNEE Token</div>
+                    <code>0x250ff89cf1518F42F3A4c927938ED73444491715</code>
+                </div>
+                <div class="card">
+                    <div class="card-title">VaultFactory</div>
+                    <code>0xfD3af9554C45211c228B8E7498B26A325669A484</code>
+                </div>
+                
+                <h2>Ethereum Mainnet</h2>
+                <div class="card">
+                    <div class="card-title">MNEE Token (Official)</div>
+                    <code>0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF</code>
+                </div>
+                <div class="card">
+                    <div class="card-title">VaultFactory</div>
+                    <code>Coming Soon</code>
+                </div>
+            </section>
+            
+            <section id="vault" class="content-section">
+                <h1>SentinelVault Contract</h1>
+                <p class="subtitle">Core vault functionality</p>
+                
+                <h2>State Variables</h2>
+                <table class="param-table">
+                    <tr>
+                        <th>Variable</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>owner</td>
+                        <td>address</td>
+                        <td>Vault owner (can revoke, withdraw, configure)</td>
+                    </tr>
+                    <tr>
+                        <td>dailyLimit</td>
+                        <td>uint256</td>
+                        <td>Maximum MNEE spendable per 24 hours</td>
+                    </tr>
+                    <tr>
+                        <td>transactionLimit</td>
+                        <td>uint256</td>
+                        <td>Maximum MNEE per single transaction</td>
+                    </tr>
+                    <tr>
+                        <td>timeLockDuration</td>
+                        <td>uint256</td>
+                        <td>Seconds to wait before untrusted payments execute</td>
+                    </tr>
+                    <tr>
+                        <td>trustedVendors</td>
+                        <td>mapping</td>
+                        <td>Addresses that bypass timelock</td>
+                    </tr>
+                </table>
+                
+                <h2>Functions</h2>
+                
+                <h3>deposit(uint256 amount)</h3>
+                <p>Deposit MNEE tokens into the vault. Requires prior approval.</p>
+                <div class="code-block">
+<span class="comment">// JavaScript (ethers.js)</span>
+<span class="keyword">await</span> mneeToken.approve(vaultAddress, amount);
+<span class="keyword">await</span> vault.deposit(amount);
+</div>
+                
+                <h3>requestPayment(address vendor, uint256 amount, address agent)</h3>
+                <p>Request a payment to a vendor. Creates a pending transaction.</p>
+                
+                <h3>executePayment(uint256 txId)</h3>
+                <p>Execute a pending payment after timelock has passed.</p>
+                
+                <h3>revokeTransaction(uint256 txId, string reason)</h3>
+                <p>Cancel a pending payment. Only callable by owner.</p>
+            </section>
+            
+            <section id="factory" class="content-section">
+                <h1>VaultFactory Contract</h1>
+                <p class="subtitle">Vault deployment factory</p>
+                
+                <h2>Functions</h2>
+                
+                <h3>createVault()</h3>
+                <p>Deploy a new SentinelVault for the caller. One vault per address.</p>
+                
+                <h3>getUserVault(address user) → address</h3>
+                <p>Get the vault address for a user. Returns zero address if none exists.</p>
+                
+                <h3>hasVault(address user) → bool</h3>
+                <p>Check if a user has deployed a vault.</p>
+            </section>
+            
+            <section id="api-overview" class="content-section">
+                <h1>API Overview</h1>
+                <p class="subtitle">REST API for programmatic access</p>
+                
+                <h2>Base URL</h2>
+                <div class="code-block">https://api.sentinelfinance.xyz</div>
+                
+                <h2>Rate Limits</h2>
+                <table class="param-table">
+                    <tr><th>Endpoint Type</th><th>Limit</th></tr>
+                    <tr><td>Read operations</td><td>100 requests/minute</td></tr>
+                    <tr><td>Write operations</td><td>30 requests/minute</td></tr>
+                    <tr><td>Agent payments</td><td>30 requests/minute</td></tr>
+                </table>
+            </section>
+            
+            <section id="endpoints" class="content-section">
+                <h1>API Endpoints</h1>
+                <p class="subtitle">Complete endpoint reference</p>
+                
+                <h2>Health</h2>
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge get">GET</span>
+                        <span class="endpoint-path">/health</span>
+                        <span class="endpoint-desc">Check API status</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <p>Returns API health status. No authentication required.</p>
+                    </div>
+                </div>
+                
+                <h2>Vault</h2>
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge get">GET</span>
+                        <span class="endpoint-path">/api/v1/vault/balance</span>
+                        <span class="endpoint-desc">Get vault balance</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <p>Returns current MNEE balance in the vault.</p>
+                    </div>
+                </div>
+                
+                <h2>Transactions</h2>
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge get">GET</span>
+                        <span class="endpoint-path">/api/v1/transactions/history</span>
+                        <span class="endpoint-desc">Transaction history</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <h4 style="color: var(--text-primary);">Query Parameters</h4>
+                        <table class="param-table">
+                            <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                            <tr><td>limit</td><td>integer</td><td>Max results (default: 100, max: 500)</td></tr>
+                            <tr><td>offset</td><td>integer</td><td>Pagination offset</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <h2>AI Agent</h2>
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge post">POST</span>
+                        <span class="endpoint-path">/api/v1/agent/payment</span>
+                        <span class="endpoint-desc">Request payment (AI agents)</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <div class="alert danger" style="margin-bottom: 16px;">
+                            <strong>⚠️ Server-Side Only:</strong> This endpoint requires a private key. Only call from secure backend servers, never from client-side code.
+                        </div>
+                        <h4 style="color: var(--text-primary);">Request Body</h4>
+                        <table class="param-table">
+                            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+                            <tr><td>vendor <span class="required">REQUIRED</span></td><td>string</td><td>Vendor name or address</td></tr>
+                            <tr><td>amount <span class="required">REQUIRED</span></td><td>string</td><td>Amount in MNEE</td></tr>
+                            <tr><td>reason <span class="required">REQUIRED</span></td><td>string</td><td>Payment reason</td></tr>
+                            <tr><td>private_key <span class="required">REQUIRED</span></td><td>string</td><td>Agent wallet private key (server-side only!)</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="webhooks" class="content-section">
+                <h1>Webhooks</h1>
+                <p class="subtitle">Real-time event notifications</p>
+                
+                <h2>Supported Events</h2>
+                <table class="param-table">
+                    <tr><th>Event</th><th>Description</th></tr>
+                    <tr><td>payment.requested</td><td>New payment request created</td></tr>
+                    <tr><td>payment.executed</td><td>Payment successfully executed</td></tr>
+                    <tr><td>payment.revoked</td><td>Payment was revoked</td></tr>
+                    <tr><td>alert.high_risk</td><td>High-risk transaction detected</td></tr>
+                </table>
+                
+                <h2>Configuration</h2>
+                <p>Configure webhook URLs via environment variables:</p>
+                <div class="code-block">
+ALERT_WEBHOOK_URL=https://your-server.com/webhook
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+</div>
+            </section>
+            
+            <section id="architecture" class="content-section">
+                <h1>Architecture</h1>
+                <p class="subtitle">System design and components</p>
+                
+                <h2>System Overview</h2>
+                <div class="code-block">
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  AI Agent   │────▶│  Sentinel    │────▶│ SentinelVault│
+│  (Grok/etc) │     │  API         │     │  (On-chain)  │
+└─────────────┘     └──────────────┘     └─────────────┘
+                          │                      │
+                          ▼                      ▼
+                    ┌──────────────┐     ┌─────────────┐
+                    │  Watchdog    │     │ MNEE Token  │
+                    │  (Monitor)   │     │  (ERC-20)   │
+                    └──────────────┘     └─────────────┘
+</div>
+            </section>
+            
+            <section id="ai-agents" class="content-section">
+                <h1>AI Agent Integration</h1>
+                <p class="subtitle">Connect your AI to Sentinel</p>
+                
+                <div class="alert danger">
+                    <strong>⚠️ IMPORTANT:</strong> AI agent integrations should always run on secure servers. Never expose private keys or API secrets in client-side code, browser extensions, or mobile apps.
+                </div>
+                
+                <h2>Supported AI Providers</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li><strong style="color: var(--text-primary);">Grok (xAI)</strong> - via X/Twitter API</li>
+                    <li><strong style="color: var(--text-primary);">Claude (Anthropic)</strong> - via Anthropic API</li>
+                    <li><strong style="color: var(--text-primary);">GPT-4 (OpenAI)</strong> - via OpenAI API</li>
+                </ul>
+                
+                <h2>Integration Example (Python - Server Side)</h2>
+                <div class="code-block">
+<span class="keyword">import</span> os
+<span class="keyword">import</span> requests
+
+API_URL = <span class="string">"https://api.sentinelfinance.xyz"</span>
+API_KEY = os.environ[<span class="string">"SENTINEL_API_KEY"</span>]
+AGENT_KEY = os.environ[<span class="string">"AGENT_PRIVATE_KEY"</span>]  <span class="comment"># Never hardcode!</span>
+
+<span class="keyword">def</span> request_payment(vendor, amount, reason):
+    response = requests.post(
+        f<span class="string">"{API_URL}/api/v1/agent/payment"</span>,
+        headers={<span class="string">"x-api-key"</span>: API_KEY},
+        json={
+            <span class="string">"vendor"</span>: vendor,
+            <span class="string">"amount"</span>: str(amount),
+            <span class="string">"reason"</span>: reason,
+            <span class="string">"private_key"</span>: AGENT_KEY
+        }
+    )
+    <span class="keyword">return</span> response.json()
+</div>
+            </section>
+            
+            <section id="payment-flow" class="content-section">
+                <h1>Payment Flow</h1>
+                <p class="subtitle">How payments are processed</p>
+                
+                <h2>Status Definitions</h2>
+                <table class="param-table">
+                    <tr><th>Status</th><th>Meaning</th><th>Action</th></tr>
+                    <tr><td style="color: var(--accent-emerald);">APPROVED</td><td>Trusted vendor, executes immediately</td><td>None</td></tr>
+                    <tr><td style="color: var(--accent-amber);">PENDING</td><td>In timelock period</td><td>Wait or revoke</td></tr>
+                    <tr><td style="color: var(--accent-cyan);">READY</td><td>Timelock passed</td><td>Execute or revoke</td></tr>
+                    <tr><td style="color: var(--accent-emerald);">EXECUTED</td><td>Payment completed</td><td>None</td></tr>
+                    <tr><td style="color: var(--accent-red);">REVOKED</td><td>Cancelled by owner</td><td>None</td></tr>
+                </table>
+            </section>
+            
+            <section id="faq" class="content-section">
+                <h1>FAQ</h1>
+                <p class="subtitle">Frequently asked questions</p>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">What is MNEE?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>MNEE is a stablecoin on Ethereum designed for everyday transactions. Sentinel Finance provides security infrastructure specifically for MNEE holdings.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">Is my vault secure?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>Yes. Each vault is a separate smart contract that only you control. Your private keys never leave your wallet. The vault uses OpenZeppelin's audited contracts for security.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">Are there fees?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>Sentinel Finance charges no fees. You only pay standard Ethereum gas fees for transactions.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">How do I get test MNEE?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>On Sepolia testnet, use the faucet to claim 1,000 test MNEE. There's a 1-hour cooldown between claims.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="troubleshooting" class="content-section">
+                <h1>Troubleshooting</h1>
+                <p class="subtitle">Common issues and solutions</p>
+                
+                <h2>MetaMask Not Connecting</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>Ensure MetaMask is unlocked</li>
+                    <li>Check you're on the correct network (Sepolia for testnet)</li>
+                    <li>Try disconnecting and reconnecting</li>
+                </ul>
+                
+                <h2>Transaction Failing</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>Ensure you have enough ETH for gas</li>
+                    <li>Check transaction limits haven't been exceeded</li>
+                    <li>Verify the vault has sufficient MNEE balance</li>
+                </ul>
+                
+                <h2>API Errors</h2>
+                <div class="alert info"><strong>401 Unauthorized:</strong> Check your API key is correct.</div>
+                <div class="alert warning"><strong>429 Too Many Requests:</strong> Rate limit hit. Wait 60 seconds.</div>
+                <div class="alert danger"><strong>503 Service Unavailable:</strong> Blockchain connection down.</div>
+            </section>
+            
+            <section id="changelog" class="content-section">
+                <h1>Changelog</h1>
+                <p class="subtitle">Version history</p>
+                
+                <h2>v2.0.0 (January 2026)</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>Multi-user vault factory system</li>
+                    <li>AI agent payment API</li>
+                    <li>Real-time risk scoring with higher sensitivity</li>
+                    <li>Webhook notifications</li>
+                    <li>Dark mode UI</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+    
+    <script>
+        function showSection(id) {
+            document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            
+            document.getElementById(id).classList.add('active');
+            document.querySelector(`[onclick="showSection('${id}')"]`).classList.add('active');
+            
+            if (window.innerWidth < 1024) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
+            
+            window.scrollTo(0, 0);
+        }
+        
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+        
+        if (window.location.hash) {
+            const section = window.location.hash.replace('#', '');
+            if (document.getElementById(section)) {
+                showSection(section);
+            }
+        }
+    </script>
+</body>
+</html>
