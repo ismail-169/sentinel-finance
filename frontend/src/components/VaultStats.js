@@ -594,7 +594,8 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .add-vendor-section { background: var(--bg-secondary); border: 2px solid var(--border-color, #ffcc00); padding: 20px; margin-bottom: 24px; }
         .add-vendor-section h3 { font-family: var(--font-pixel); font-size: 14px; margin-bottom: 16px; }
         .add-form { display: flex; gap: 12px; }
-        .add-form input { flex: 1; padding: 12px; border: 2px solid var(--border-color, #ffcc00); font-size: 12px; }
+        .add-form input { flex: 1; padding: 12px; border: 2px solid var(--border-color, #ffcc00); font-size: 12px; background: var(--bg-secondary, #252525); color: var(--text-primary, #ffcc00); }
+        .add-form input::placeholder { color: var(--text-muted, #b38f00); }
         .add-form .mono-input { font-family: var(--font-mono); }
         .add-btn { 
           background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); border: none; padding: 0 24px; 

@@ -569,8 +569,9 @@ export default function App() {
 
           <div className="account-box">
             <div className="addr">{account?.slice(0, 6)}...{account?.slice(-4)}</div>
-            <button className="logout-btn" onClick={disconnectWallet}>
+            <button className="logout-btn" onClick={disconnectWallet} title="DISCONNECT WALLET">
               <LogOut size={14} />
+              <span className="logout-text">EXIT</span>
             </button>
           </div>
         </div>
@@ -872,8 +873,7 @@ export default function App() {
           color: var(--text-primary, #ffcc00);
         }
         .logout-btn {
-          width: 36px; 
-          height: 36px; 
+          padding: 8px 12px; 
           background: var(--text-primary, #ffcc00); 
           color: var(--bg-primary, #1a1a1a); 
           border: none;
@@ -881,7 +881,13 @@ export default function App() {
           display: flex; 
           align-items: center; 
           justify-content: center;
+          gap: 6px;
+          font-family: var(--font-pixel);
+          font-size: 10px;
+          font-weight: 700;
+          transition: all 0.2s;
         }
+        .logout-text { display: inline; }
         .logout-btn:hover { background: var(--accent-red); color: white; }
 
         .main-content {
@@ -950,12 +956,19 @@ export default function App() {
           .balance-group { display: none; }
           .main-content { padding: 16px; }
           .action-group { gap: 4px; }
-          .icon-btn { padding: 8px; }
+          .icon-btn { padding: 8px; width: 36px; height: 36px; }
+          .account-box { padding-left: 8px; }
+          .addr { font-size: 10px; margin-right: 8px; }
+          .logout-btn { padding: 6px 10px; }
         }
 
         @media (max-width: 480px) {
           .logo-text { display: none; }
           .network-tag .net-name { display: none; }
+          .logout-text { display: none; }
+          .logout-btn { padding: 8px; }
+          .icon-btn { width: 32px; height: 32px; }
+          .icon-btn svg { width: 14px; height: 14px; }
         }
       `}</style>
     </div>

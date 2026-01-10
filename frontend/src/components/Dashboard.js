@@ -500,23 +500,46 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         @media (max-width: 768px) {
           .dashboard { padding: 16px; gap: 16px; }
           .stats-row { grid-template-columns: 1fr 1fr; gap: 12px; }
-          .stat-card { padding: 16px; }
-          .stat-value { font-size: 20px; }
+          .stat-card { padding: 16px; min-height: auto; }
+          .stat-value { font-size: 18px; }
           .stat-label { font-size: 10px; }
+          .stat-subtitle { font-size: 9px; }
+          .stat-icon-box { width: 32px; height: 32px; }
+          .stat-icon-box svg { width: 18px; height: 18px; }
           .chart-card { padding: 16px; }
           .chart-header { flex-direction: column; align-items: flex-start; gap: 8px; }
           .chart-title { font-size: 12px; }
+          .chart-wrapper { height: 180px; }
           .recent-list { grid-template-columns: 1fr; gap: 12px; }
+          .main-grid { gap: 16px; }
         }
 
         @media (max-width: 480px) {
-          .dashboard { padding: 12px; gap: 12px; }
+          .dashboard { padding: 10px; gap: 10px; }
           .stats-row { grid-template-columns: 1fr; gap: 10px; }
-          .stat-card { padding: 12px; flex-direction: column; align-items: flex-start; gap: 8px; }
-          .stat-icon-box { position: absolute; top: 12px; right: 12px; }
-          .stat-value { font-size: 18px; }
-          .trend-badge { position: static; margin-top: 4px; }
+          .stat-card { 
+            padding: 14px; 
+            flex-direction: row; 
+            align-items: center; 
+            justify-content: space-between;
+          }
+          .stat-content { flex: 1; }
+          .stat-icon-box { 
+            position: relative; 
+            top: auto; 
+            right: auto; 
+            width: 36px; 
+            height: 36px;
+            opacity: 0.7;
+          }
+          .stat-value { font-size: 20px; }
+          .stat-label { font-size: 11px; }
+          .stat-subtitle { font-size: 9px; }
+          .trend-badge { position: absolute; top: 8px; right: 8px; }
+          .geo-badge { display: none; }
           .chart-wrapper { height: 150px; }
+          .chart-card { padding: 12px; }
+          .chart-title { font-size: 11px; }
         }
       `}</style>
     </div>
