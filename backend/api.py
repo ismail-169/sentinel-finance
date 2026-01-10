@@ -83,7 +83,10 @@ settings = Settings()
 DEPLOYMENT_PATH = Path(__file__).parent / "deployment.json"
 if not DEPLOYMENT_PATH.exists():
     DEPLOYMENT_PATH = Path(__file__).parent.parent / "deployment.json"
-ABI_PATH = Path(__file__).parent.parent / "artifacts" / "contracts" / "SentinelVault.sol" / "SentinelVault.json"
+# Check backend folder first for ABI
+ABI_PATH = Path(__file__).parent / "SentinelVault.json"
+if not ABI_PATH.exists():
+    ABI_PATH = Path(__file__).parent.parent / "artifacts" / "contracts" / "SentinelVault.sol" / "SentinelVault.json"
 
 REQUEST_COUNT = Counter("sentinel_requests_total", "Total requests", ["method", "endpoint", "status"])
 REQUEST_LATENCY = Histogram("sentinel_request_latency_seconds", "Request latency", ["endpoint"])

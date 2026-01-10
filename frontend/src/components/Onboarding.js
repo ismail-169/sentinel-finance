@@ -16,6 +16,7 @@ export default function Onboarding({
 }) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [walletBalance, setWalletBalance] = useState('0');
   const [ethBalance, setEthBalance] = useState('0');
@@ -23,6 +24,60 @@ export default function Onboarding({
   const [vaultAddress, setVaultAddress] = useState(null);
   const [depositAmount, setDepositAmount] = useState('');
   const [copied, setCopied] = useState(false);
+  const [wrongChain, setWrongChain] = useState(false);
+
+  const NETWORK_CONFIG = {
+    sepolia: {
+      chainId: '0xaa36a7',
+      chainIdDecimal: 11155111,
+      name: 'Sepolia',
+      rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/demo',
+      explorer: 'https://sepolia.etherscan.io'
+    },
+    mainnet: {
+      chainId: '0x1',
+      chainIdDecimal: 1,
+      name: 'Mainnet',
+      rpcUrl: 'https://eth-mainnet.g.alchemy.com/v2/demo',
+      explorer: 'https://etherscan.io'
+    }
+  };
+
+  const switchToCorrectChain = async () => {
+    const config = NETWORK_CONFIG[network];
+    if (!config || !window.ethereum) return;
+
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: config.chainId }],
+      });
+      setWrongChain(false);
+      setError('');
+      await loadBalanceAndStatus();
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: config.chainId,
+              chainName: config.name,
+              nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+              rpcUrls: [config.rpcUrl],
+              blockExplorerUrls: [config.explorer]
+            }]
+          });
+          setWrongChain(false);
+          setError('');
+        } catch (addError) {
+          setError('Failed to add network. Please add it manually.');
+        }
+      } else {
+        setError('Failed to switch network. Please switch manually.');
+      }
+    }
+  };
 
   const ETH_FAUCETS = [
     { name: 'GOOGLE CLOUD', url: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia' },
@@ -37,7 +92,22 @@ export default function Onboarding({
   }, [mneeContract, account]);
 
   const loadBalanceAndStatus = async () => {
+    setRefreshing(true);
     try {
+      // Check if on correct chain first
+      if (window.ethereum) {
+        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+        const expectedChainId = NETWORK_CONFIG[network]?.chainId;
+        
+        if (currentChainId !== expectedChainId) {
+          setWrongChain(true);
+          setError(`Please switch to ${NETWORK_CONFIG[network]?.name || network} network`);
+          setRefreshing(false);
+          return;
+        }
+        setWrongChain(false);
+      }
+
       const balance = await mneeContract.balanceOf(account);
       setWalletBalance(ethers.formatUnits(balance, 18));
       
@@ -53,8 +123,15 @@ export default function Onboarding({
           setCanClaim(true);
         }
       }
+      setError('');
     } catch (err) {
       console.error('Load balance error:', err);
+      if (err.message?.includes('network') || err.message?.includes('chain')) {
+        setWrongChain(true);
+        setError(`Please switch to ${NETWORK_CONFIG[network]?.name || network} network`);
+      }
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -168,6 +245,16 @@ export default function Onboarding({
             </div>
             <h2>ACQUIRE ASSETS</h2>
             <p>CLAIM TESTNET MNEE TOKENS TO PROCEED</p>
+
+            {wrongChain && (
+              <div className="wrong-chain-banner">
+                <AlertCircle size={16} />
+                <span>WRONG NETWORK DETECTED</span>
+                <button className="switch-btn" onClick={switchToCorrectChain}>
+                  SWITCH TO {NETWORK_CONFIG[network]?.name?.toUpperCase() || network.toUpperCase()}
+                </button>
+              </div>
+            )}
             
             <div className="balances-grid">
               <div className="balance-box">
@@ -219,8 +306,9 @@ export default function Onboarding({
                   ))}
                 </div>
 
-                <button className="refresh-btn" onClick={loadBalanceAndStatus}>
-                  <Loader size={12} /> REFRESH BALANCE
+                <button className="refresh-btn" onClick={loadBalanceAndStatus} disabled={refreshing}>
+                  {refreshing ? <Loader size={12} className="spin" /> : <Loader size={12} />} 
+                  {refreshing ? 'REFRESHING...' : 'REFRESH BALANCE'}
                 </button>
               </div>
             )}
@@ -509,6 +597,37 @@ export default function Onboarding({
           margin-bottom: 16px;
         }
 
+        .wrong-chain-banner {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 16px;
+          background: rgba(255, 59, 48, 0.15);
+          border: 2px solid var(--accent-red);
+          margin-bottom: 20px;
+          text-align: center;
+        }
+        .wrong-chain-banner span {
+          font-family: var(--font-pixel);
+          font-size: 12px;
+          color: var(--accent-red);
+        }
+        .switch-btn {
+          padding: 10px 20px;
+          background: var(--accent-red);
+          color: white;
+          border: none;
+          font-family: var(--font-pixel);
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .switch-btn:hover {
+          background: #ff6b5b;
+          transform: translateY(-2px);
+        }
+
         .wallet-box { margin-bottom: 16px; }
         .wallet-label { font-size: 10px; font-weight: 700; color: var(--text-muted, #b38f00); display: block; margin-bottom: 6px; }
         .wallet-row { display: flex; align-items: center; gap: 8px; background: var(--bg-secondary, #252525); border: 2px solid var(--border-color, #ffcc00); padding: 8px 12px; }
@@ -547,7 +666,8 @@ export default function Onboarding({
           cursor: pointer;
           color: var(--text-primary, #ffcc00);
         }
-        .refresh-btn:hover { background: var(--bg-card, #2a2a2a); }
+        .refresh-btn:hover:not(:disabled) { background: var(--bg-card, #2a2a2a); }
+        .refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .status-msg {
           display: flex;
