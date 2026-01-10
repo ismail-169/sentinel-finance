@@ -183,15 +183,31 @@ export default function App() {
       // If user disconnected, force wallet picker to show
       let accounts;
       if (forceNewWallet) {
-        // This forces MetaMask to show account selection dialog
-        await window.ethereum.request({
-          method: 'wallet_requestPermissions',
-          params: [{ eth_accounts: {} }]
-        });
-        accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        try {
+          // This forces MetaMask to show account selection dialog
+          await window.ethereum.request({
+            method: 'wallet_requestPermissions',
+            params: [{ eth_accounts: {} }]
+          });
+        } catch (permErr) {
+          // User rejected or closed - go back to network select
+          console.log('Permission request cancelled:', permErr);
+          setForceNewWallet(false);
+          setAppState('network-select');
+          setLoading(false);
+          return;
+        }
         setForceNewWallet(false);
-      } else {
-        accounts = await browserProvider.send('eth_requestAccounts', []);
+      }
+      
+      // Always request accounts after permissions
+      accounts = await browserProvider.send('eth_requestAccounts', []);
+      
+      if (!accounts || accounts.length === 0) {
+        alert('No account selected');
+        setAppState('network-select');
+        setLoading(false);
+        return;
       }
       
       const userSigner = await browserProvider.getSigner();
