@@ -89,7 +89,13 @@ export default function NetworkSelector({ onSelectNetwork }) {
         </div>
 
         <div className="footer-info">
-          POWERED BY MNEE STABLECOIN
+          <a href="https://github.com/ismail-169/sentinel-finance" target="_blank" rel="noopener noreferrer" className="github-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            GitHub
+          </a>
+          <span>POWERED BY MNEE STABLECOIN</span>
         </div>
       </motion.div>
 
@@ -221,11 +227,34 @@ export default function NetworkSelector({ onSelectNetwork }) {
         .mode-btn.live { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
         .mode-btn.live:hover { background: var(--accent-cyan); color: var(--bg-primary, #1a1a1a); border-color: var(--accent-cyan); }
 
-        .footer-info { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted, #b38f00); letter-spacing: 1px; }
+        .footer-info { 
+          font-family: var(--font-mono); font-size: 10px; color: var(--text-muted, #b38f00); letter-spacing: 1px;
+          display: flex; align-items: center; justify-content: center; gap: 16px;
+        }
+        .footer-info .github-link {
+          display: flex; align-items: center; gap: 6px;
+          color: var(--text-muted, #b38f00); text-decoration: none;
+          padding: 6px 12px; border: 1px solid var(--text-muted, #b38f00);
+          transition: all 0.2s;
+        }
+        .footer-info .github-link:hover {
+          color: var(--text-primary, #ffcc00); border-color: var(--text-primary, #ffcc00);
+        }
 
         @media (max-width: 768px) {
           .mode-grid { grid-template-columns: 1fr; gap: 20px; }
           .logo-section h1 { font-size: 32px; }
+          .footer-info { flex-direction: column; gap: 12px; }
+        }
+
+        @media (max-width: 480px) {
+          .network-selector { padding: 16px; }
+          .logo-section h1 { font-size: 24px; }
+          .logo-section .tagline { font-size: 10px; }
+          .mode-card { padding: 20px; }
+          .card-header h3 { font-size: 16px; }
+          .feature-list li { font-size: 11px; }
+          .mode-btn { padding: 12px; font-size: 12px; }
         }
       `}</style>
     </div>

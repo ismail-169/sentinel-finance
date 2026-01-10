@@ -2,6 +2,6 @@
   "network": "sepolia",
   "deployer": "0x5d3792661797A61314D4e01591699c5821f164d3",
   "tokenAddress": "0x250ff89cf1518F42F3A4c927938ED73444491715",
-  "factoryAddress": "0xfD3af9554C45211c228B8E7498B26A325669A484",
+  "vaultFactory": "0xfD3af9554C45211c228B8E7498B26A325669A484",
   "deployedAt": "2026-01-08T17:03:40.592Z"
 }

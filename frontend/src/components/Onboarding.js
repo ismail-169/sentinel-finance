@@ -644,6 +644,30 @@ export default function Onboarding({
 
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+          .wizard-card { margin: 16px; max-width: calc(100% - 32px); }
+          .wizard-header { padding: 12px 16px; }
+          .step-content { padding: 20px 16px; }
+          .step-title { font-size: 18px; }
+          .step-desc { font-size: 12px; }
+          .config-row { flex-direction: column; }
+          .config-row .config-col { flex: auto; }
+          .feature-list { gap: 12px; }
+          .primary-btn { padding: 14px 24px; font-size: 12px; }
+        }
+
+        @media (max-width: 480px) {
+          .wizard-card { margin: 12px; }
+          .wizard-header { padding: 10px 12px; }
+          .step-indicator { font-size: 10px; }
+          .step-content { padding: 16px 12px; }
+          .step-title { font-size: 16px; }
+          .input-row input { padding: 10px; font-size: 14px; }
+          .config-box { padding: 12px; }
+          .config-box h4 { font-size: 11px; }
+          .config-value { font-size: 16px; }
+        }
       `}</style>
     </div>
   );

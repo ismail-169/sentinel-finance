@@ -131,7 +131,15 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
   const currentBalance = vaultBalance || vaultData?.balance || '0';
   const dailyLimit = vaultData?.dailyLimit || '0';
   const txCount = vaultData?.totalTransactions || transactions.length || 0;
-  const timeLock = vaultData?.timeLockDuration ? vaultData.timeLockDuration / 3600 : '0';
+  
+  // Format time lock properly
+  const formatTimeLock = (seconds) => {
+    if (!seconds || seconds === 0) return '0 SEC';
+    if (seconds < 60) return `${seconds} SEC`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)} MIN`;
+    return `${(seconds / 3600).toFixed(0)}H`;
+  };
+  const timeLock = formatTimeLock(vaultData?.timeLockDuration);
 
   const pendingTxs = transactions.filter(tx => !tx.executed && !tx.revoked);
   const executedTxs = transactions.filter(tx => tx.executed);
@@ -227,7 +235,7 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         />
         <StatCard
           title="TIME LOCK"
-          value={timeLock + 'H'}
+          value={timeLock}
           subtitle="UNTRUSTED DELAY"
           icon={Clock}
           color="amber"
@@ -487,6 +495,28 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         @media (max-width: 1200px) {
           .stats-row { grid-template-columns: 1fr 1fr; }
           .main-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+          .dashboard { padding: 16px; gap: 16px; }
+          .stats-row { grid-template-columns: 1fr 1fr; gap: 12px; }
+          .stat-card { padding: 16px; }
+          .stat-value { font-size: 20px; }
+          .stat-label { font-size: 10px; }
+          .chart-card { padding: 16px; }
+          .chart-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+          .chart-title { font-size: 12px; }
+          .recent-list { grid-template-columns: 1fr; gap: 12px; }
+        }
+
+        @media (max-width: 480px) {
+          .dashboard { padding: 12px; gap: 12px; }
+          .stats-row { grid-template-columns: 1fr; gap: 10px; }
+          .stat-card { padding: 12px; flex-direction: column; align-items: flex-start; gap: 8px; }
+          .stat-icon-box { position: absolute; top: 12px; right: 12px; }
+          .stat-value { font-size: 18px; }
+          .trend-badge { position: static; margin-top: 4px; }
+          .chart-wrapper { height: 150px; }
         }
       `}</style>
     </div>

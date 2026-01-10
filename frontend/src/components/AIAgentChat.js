@@ -584,12 +584,12 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
           box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.1);
         }
         .user .bubble-content { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); border-color: black; }
-        .agent .bubble-content { background: var(--bg-card, #2a2a2a); color: black; }
+        .agent .bubble-content { background: var(--bg-card, #2a2a2a); color: var(--text-primary, #ffcc00); }
 
         .message-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; font-family: var(--font-geo); }
 
         .payment-receipt {
-          margin-top: 16px; border: 2px dashed black; background: var(--bg-secondary, #252525); padding: 12px; color: black;
+          margin-top: 16px; border: 2px dashed var(--border-color, #ffcc00); background: var(--bg-secondary, #252525); padding: 12px; color: var(--text-primary, #ffcc00);
         }
         .payment-receipt.approved { background: #f0fdf4; border-color: var(--accent-emerald); }
         .payment-receipt.blocked { background: #fef2f2; border-color: var(--accent-red); }
@@ -616,21 +616,21 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
           padding: 8px 16px; border: 2px solid var(--border-color, #ffcc00); font-size: 11px; font-weight: 700;
           font-family: var(--font-mono); box-shadow: 2px 2px 0px 0px rgba(0,0,0,0.1);
         }
-        .system-message.info { background: #eff6ff; border-color: var(--accent-blue); color: var(--accent-blue); }
-        .system-message.success { background: #f0fdf4; border-color: var(--accent-emerald); color: var(--accent-emerald); }
-        .system-message.danger { background: #fef2f2; border-color: var(--accent-red); color: var(--accent-red); }
-        .system-message.warning { background: #fffbeb; border-color: var(--accent-amber); color: var(--accent-amber); }
+        .system-message.info { background: rgba(59, 130, 246, 0.15); border-color: var(--accent-blue); color: var(--accent-blue); }
+        .system-message.success { background: rgba(0, 204, 102, 0.15); border-color: var(--accent-emerald); color: var(--accent-emerald); }
+        .system-message.danger { background: rgba(255, 59, 48, 0.15); border-color: var(--accent-red); color: var(--accent-red); }
+        .system-message.warning { background: rgba(245, 158, 11, 0.15); border-color: var(--accent-amber); color: var(--accent-amber); }
 
         .provider-tag {
           display: inline-block; margin-top: 8px; font-size: 9px; padding: 2px 6px; 
-          border: 1px solid #ccc; color: #888; font-family: var(--font-mono);
+          border: 1px solid var(--text-muted, #b38f00); color: var(--text-muted, #b38f00); font-family: var(--font-mono);
         }
 
         .input-controls {
           display: flex; gap: 12px; padding: 20px; border-top: 2px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a);
         }
         .input-controls input {
-          flex: 1; border: 2px solid var(--border-color, #ffcc00); padding: 12px; font-family: var(--font-mono); font-size: 14px;
+          flex: 1; border: 2px solid var(--border-color, #ffcc00); padding: 12px; font-family: var(--font-mono); font-size: 14px; background: var(--bg-secondary, #252525); color: var(--text-primary, #ffcc00);
           border-radius: 0; outline: none; transition: box-shadow 0.1s;
         }
         .input-controls input:focus { box-shadow: 4px 4px 0px 0px var(--accent-purple); }
@@ -644,6 +644,32 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
 
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+          .agent-chat { max-width: 100%; }
+          .chat-header { padding: 12px 16px; }
+          .chat-title { font-size: 12px; }
+          .messages-area { padding: 16px; gap: 12px; }
+          .bubble-content { padding: 12px; }
+          .message-text { font-size: 13px; }
+          .input-controls { padding: 12px; gap: 8px; }
+          .input-controls input { padding: 10px; font-size: 13px; }
+          .input-controls button { width: 44px; }
+          .payment-receipt { padding: 10px; }
+          .receipt-row { font-size: 11px; }
+        }
+
+        @media (max-width: 480px) {
+          .chat-header { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+          .select-btn { padding: 6px 10px; font-size: 10px; }
+          .dropdown-menu { width: 120px; }
+          .menu-item { padding: 10px 12px; font-size: 11px; }
+          .bubble-content { padding: 10px; }
+          .message-text { font-size: 12px; }
+          .input-controls { padding: 10px; }
+          .input-controls input { padding: 8px; font-size: 12px; }
+          .input-controls button { width: 40px; }
+        }
       `}</style>
     </div>
   );

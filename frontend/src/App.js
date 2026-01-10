@@ -5,7 +5,7 @@ import {
   Shield, Wallet, Activity, AlertTriangle, CheckCircle, 
   XCircle, Clock, TrendingUp, Users, Zap, RefreshCw,
   ChevronRight, ExternalLink, Bell, Settings, Moon, Bot, Code,
-  LogOut, ArrowDownToLine, ArrowUpFromLine, Coins, Menu, X
+  LogOut, ArrowDownToLine, ArrowUpFromLine, Coins, Menu, X, Github
 } from 'lucide-react';
 import NetworkSelector from './components/NetworkSelector';
 import Onboarding from './components/Onboarding';
@@ -133,10 +133,21 @@ export default function App() {
   };
 
   const connectWallet = async (network) => {
+    // Check if on mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
     if (!window.ethereum) {
-      alert('Please install MetaMask');
-      setAppState('network-select');
-      return;
+      if (isMobile) {
+        // Deep link to MetaMask app
+        const dappUrl = window.location.href.replace('https://', '').replace('http://', '');
+        const metamaskDeepLink = `https://metamask.app.link/dapp/${dappUrl}`;
+        window.location.href = metamaskDeepLink;
+        return;
+      } else {
+        alert('Please install MetaMask');
+        setAppState('network-select');
+        return;
+      }
     }
 
     const networkConfig = NETWORKS[network];
@@ -545,6 +556,9 @@ export default function App() {
           </div>
           
           <div className="action-group">
+            <a href="https://github.com/ismail-169/sentinel-finance" target="_blank" rel="noopener noreferrer" className="icon-btn github" title="GITHUB">
+              <Github size={16} />
+            </a>
             <button className="icon-btn" onClick={() => setShowDepositModal(true)} title="DEPOSIT">
               <ArrowDownToLine size={16} />
             </button>

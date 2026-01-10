@@ -610,7 +610,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .setting-row label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 12px; }
         .setting-row .input-group { display: flex; border: 2px solid var(--border-color, #ffcc00); }
         .setting-row .input-group input { 
-          flex: 1; padding: 12px; border: none; outline: none; 
+          flex: 1; padding: 12px; border: none; outline: none; background: var(--bg-secondary, #252525); color: var(--text-primary, #ffcc00); 
           font-family: var(--font-mono); font-size: 16px; font-weight: 600;
         }
         .setting-row .input-group .unit { 
@@ -662,6 +662,30 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
           .vendors-lists { grid-template-columns: 1fr; }
           .add-form { flex-direction: column; }
           .timelock-presets { flex-wrap: wrap; }
+        }
+
+        @media (max-width: 768px) {
+          .vault-stats { padding: 16px; gap: 16px; }
+          .overview-grid { grid-template-columns: 1fr; gap: 12px; }
+          .stat-box { padding: 16px; }
+          .stat-box .value { font-size: 20px; }
+          .section-card { padding: 16px; }
+          .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+          .setting-row { flex-direction: column; gap: 12px; }
+          .setting-row .input-group { width: 100%; }
+          .add-form input { font-size: 14px; }
+        }
+
+        @media (max-width: 480px) {
+          .vault-stats { padding: 12px; gap: 12px; }
+          .stat-box { padding: 12px; }
+          .stat-box .value { font-size: 18px; }
+          .stat-box .label { font-size: 10px; }
+          .section-title { font-size: 12px; }
+          .timelock-presets { gap: 6px; }
+          .preset-btn { padding: 4px 8px; font-size: 10px; }
+          .vendor-item { flex-direction: column; align-items: flex-start; gap: 8px; }
+          .vendor-item .actions { width: 100%; justify-content: flex-end; }
         }
       `}</style>
     </div>
