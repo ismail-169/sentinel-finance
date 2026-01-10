@@ -175,9 +175,11 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
   return (
     <div className="dashboard-layout">
       <div className="dash-header">
-        <div>
-          <h1>SYSTEM DASHBOARD</h1>
-          <p>REAL-TIME VAULT TELEMETRY</p>
+        <div className="dash-header-top">
+          <div>
+            <h1>SYSTEM DASHBOARD</h1>
+            <p>REAL-TIME VAULT TELEMETRY</p>
+          </div>
         </div>
         <div className="header-controls">
           {account && (
@@ -413,13 +415,16 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
       <style jsx>{`
         .dashboard-layout { display: flex; flex-direction: column; gap: 32px; }
         .dash-header { 
-          display: flex; justify-content: space-between; align-items: flex-end; 
+          display: flex; flex-direction: column; gap: 16px;
           border-bottom: 4px solid var(--border-color, #ffcc00); padding-bottom: 24px; 
+        }
+        .dash-header-top {
+          display: flex; justify-content: space-between; align-items: flex-start;
         }
         .dash-header h1 { font-family: var(--font-pixel); font-size: 32px; margin-bottom: 4px; line-height: 1; color: var(--text-primary, #ffcc00); }
         .dash-header p { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted, #b38f00); letter-spacing: 1px; }
 
-        .header-controls { display: flex; gap: 12px; align-items: center; }
+        .header-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         
         .user-badge {
           display: flex; align-items: center; gap: 8px;
@@ -498,7 +503,13 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         }
 
         @media (max-width: 768px) {
-          .dashboard { padding: 16px; gap: 16px; }
+          .dashboard-layout { gap: 20px; }
+          .dash-header { padding-bottom: 16px; gap: 12px; }
+          .dash-header h1 { font-size: 24px; }
+          .dash-header p { font-size: 10px; }
+          .header-controls { gap: 8px; }
+          .user-badge { padding: 8px 12px; font-size: 11px; }
+          .refresh-btn { padding: 10px 14px; font-size: 10px; }
           .stats-row { grid-template-columns: 1fr 1fr; gap: 12px; }
           .stat-card { padding: 16px; min-height: auto; }
           .stat-value { font-size: 18px; }
@@ -515,7 +526,12 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         }
 
         @media (max-width: 480px) {
-          .dashboard { padding: 10px; gap: 10px; }
+          .dashboard-layout { gap: 16px; }
+          .dash-header { gap: 10px; padding-bottom: 12px; border-bottom-width: 2px; }
+          .dash-header h1 { font-size: 20px; }
+          .header-controls { width: 100%; }
+          .user-badge { flex: 1; justify-content: center; padding: 8px 10px; font-size: 10px; }
+          .refresh-btn { flex: 1; justify-content: center; padding: 8px 10px; font-size: 10px; box-shadow: 2px 2px 0px 0px var(--border-color, #ffcc00); }
           .stats-row { grid-template-columns: 1fr; gap: 10px; }
           .stat-card { 
             padding: 14px; 

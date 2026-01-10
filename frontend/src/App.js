@@ -125,6 +125,7 @@ export default function App() {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [forceNewWallet, setForceNewWallet] = useState(false);
 
   const handleNetworkSelect = async (network) => {
     setSelectedNetwork(network);
@@ -178,7 +179,21 @@ export default function App() {
       }
 
       const browserProvider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await browserProvider.send('eth_requestAccounts', []);
+      
+      // If user disconnected, force wallet picker to show
+      let accounts;
+      if (forceNewWallet) {
+        // This forces MetaMask to show account selection dialog
+        await window.ethereum.request({
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }]
+        });
+        accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        setForceNewWallet(false);
+      } else {
+        accounts = await browserProvider.send('eth_requestAccounts', []);
+      }
+      
       const userSigner = await browserProvider.getSigner();
       const chainNetwork = await browserProvider.getNetwork();
 
@@ -248,6 +263,7 @@ export default function App() {
     setAlerts([]);
     setVendors([]);
     setSelectedNetwork(null);
+    setForceNewWallet(true); // Force wallet picker on next connect
     setAppState('network-select');
   };
 
@@ -905,6 +921,7 @@ export default function App() {
           padding: 8px;
           cursor: pointer;
           color: var(--text-primary, #ffcc00);
+          margin-left: auto;
         }
 
         .mobile-nav {

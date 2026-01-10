@@ -79,7 +79,10 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-DEPLOYMENT_PATH = Path(__file__).parent.parent / "deployment.json"
+# Check backend folder first, then repo root
+DEPLOYMENT_PATH = Path(__file__).parent / "deployment.json"
+if not DEPLOYMENT_PATH.exists():
+    DEPLOYMENT_PATH = Path(__file__).parent.parent / "deployment.json"
 ABI_PATH = Path(__file__).parent.parent / "artifacts" / "contracts" / "SentinelVault.sol" / "SentinelVault.json"
 
 REQUEST_COUNT = Counter("sentinel_requests_total", "Total requests", ["method", "endpoint", "status"])
