@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ethers } from 'ethers';
 import {
   Shield, Lock, Unlock, Users, TrendingUp, Settings,
   DollarSign, Clock, CheckCircle, AlertTriangle, Plus,
-  Trash2, ExternalLink, Copy, Edit2, Save, X, Loader
+  Trash2, ExternalLink, Copy, Edit2, Save, X, Loader,
+  PiggyBank, Calendar, Repeat
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 
@@ -78,63 +79,186 @@ const VendorCard = ({ vendor, onRemove, isTrusted }) => {
         <div className="vendor-header">
            <div className="vendor-identity">
               {isTrusted ? <CheckCircle size={16} color="var(--accent-emerald)" /> : <AlertTriangle size={16} color="var(--accent-amber)" />}
-              <span className="vendor-name">{vendor.name || 'UNKNOWN VENDOR'}</span>
+              <span className="vendor-name">{vendor.name || 'UNKNOWN'}</span>
            </div>
            <div className="vendor-actions">
-              <button onClick={() => window.open(`https://etherscan.io/address/${vendor.address}`, '_blank')}><ExternalLink size={14} /></button>
-              {onRemove && <button className="remove" onClick={() => onRemove(vendor.address)}><Trash2 size={14} /></button>}
+              <button className="v-btn" onClick={copyAddress}>
+                {copied ? <CheckCircle size={12}/> : <Copy size={12}/>}
+              </button>
+              <a className="v-btn" href={`https://sepolia.etherscan.io/address/${vendor.address}`} target="_blank" rel="noreferrer">
+                <ExternalLink size={12}/>
+              </a>
+              {isTrusted && onRemove && (
+                <button className="v-btn danger" onClick={() => onRemove(vendor.address)}>
+                  <Trash2 size={12}/>
+                </button>
+              )}
            </div>
         </div>
-        
-        <div className="vendor-addr" onClick={copyAddress}>
-           {vendor.address.slice(0, 10)}...{vendor.address.slice(-8)}
-           {copied ? <CheckCircle size={10} /> : <Copy size={10} />}
-        </div>
-
+        <div className="vendor-address">{vendor.address}</div>
         <div className="vendor-stats">
-           <span>{vendor.txCount || 0} TXNS</span>
-           <span>{vendor.volume || '0'} MNEE</span>
+           <span>{vendor.txCount || 0} TXS</span>
+           <span>{parseFloat(vendor.volume || 0).toLocaleString()} MNEE</span>
         </div>
       </div>
 
       <style jsx>{`
-        .vendor-card {
-          display: flex;
-          background: var(--bg-card, #2a2a2a);
-          border: 2px solid var(--border-color, #ffcc00);
-          margin-bottom: 12px;
-          transition: transform 0.1s;
-        }
-        .vendor-card:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.1); }
-        
-        .status-strip { width: 8px; border-right: 2px solid var(--border-color, #ffcc00); }
+        .vendor-card { display: flex; overflow: hidden; background: var(--bg-secondary, #252525); border: 2px solid var(--border-color, #ffcc00); }
+        .status-strip { width: 4px; flex-shrink: 0; }
         .status-strip.trusted { background: var(--accent-emerald); }
         .status-strip.untrusted { background: var(--accent-amber); }
         
-        .vendor-content { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .vendor-content { flex: 1; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
         
         .vendor-header { display: flex; justify-content: space-between; align-items: center; }
         .vendor-identity { display: flex; align-items: center; gap: 8px; }
-        .vendor-name { font-weight: 700; font-size: 14px; text-transform: uppercase; }
+        .vendor-name { font-weight: 700; font-size: 14px; }
         
-        .vendor-actions { display: flex; gap: 8px; }
-        .vendor-actions button { background: transparent; border: 1px solid var(--border-color, #ffcc00); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-        .vendor-actions button:hover { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
-        .vendor-actions button.remove:hover { background: var(--accent-red); border-color: var(--accent-red); }
-
-        .vendor-addr { 
-          font-family: var(--font-mono); font-size: 12px; color: var(--text-muted, #b38f00); cursor: pointer; 
-          display: flex; align-items: center; gap: 6px;
-        }
-        .vendor-addr:hover { color: var(--accent-blue); }
-
-        .vendor-stats { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; border-top: 1px dashed var(--text-muted, #b38f00); padding-top: 6px; margin-top: 2px; }
+        .vendor-actions { display: flex; gap: 4px; }
+        .v-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a); cursor: pointer; transition: all 0.1s; color: var(--text-primary, #ffcc00); }
+        .v-btn:hover { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
+        .v-btn.danger:hover { background: var(--accent-red); border-color: var(--accent-red); color: white; }
+        
+        .vendor-address { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted, #b38f00); word-break: break-all; }
+        
+        .vendor-stats { display: flex; gap: 16px; font-size: 11px; font-weight: 700; color: var(--text-secondary, #e6b800); padding-top: 8px; border-top: 1px dashed var(--text-muted, #b38f00); }
       `}</style>
     </motion.div>
   );
 };
 
-const LimitEditor = ({ label, value, unit, onSave, icon: Icon }) => {
+// Savings Plans Card Component
+const SavingsPlansCard = ({ savingsPlans }) => {
+  if (savingsPlans.length === 0) return null;
+
+  return (
+    <motion.div
+      className="savings-plans-card"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.4 }}
+    >
+      <div className="spc-header">
+        <PiggyBank size={16} />
+        <span>ACTIVE SAVINGS PLANS</span>
+        <div className="count-badge">{savingsPlans.length}</div>
+      </div>
+      <div className="spc-list">
+        {savingsPlans.slice(0, 3).map(plan => {
+          const progress = Math.min(100, (plan.totalSaved / plan.targetAmount) * 100);
+          const daysLeft = Math.max(0, Math.ceil((new Date(plan.unlockDate) - new Date()) / (1000 * 60 * 60 * 24)));
+          
+          return (
+            <div key={plan.id} className="savings-plan-item">
+              <div className="spi-header">
+                <Lock size={12} />
+                <span className="spi-name">{plan.name}</span>
+                <span className="spi-days">{daysLeft}d left</span>
+              </div>
+              <div className="spi-progress">
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                </div>
+                <span className="progress-text">{plan.totalSaved.toFixed(0)} / {plan.targetAmount.toFixed(0)} MNEE</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <style jsx>{`
+        .savings-plans-card {
+          grid-column: span 2;
+          background: var(--bg-card, #2a2a2a);
+          border: 2px solid #a855f7;
+          padding: 20px;
+          box-shadow: 4px 4px 0px 0px rgba(168, 85, 247, 0.3);
+        }
+        
+        .spc-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding-bottom: 16px;
+          margin-bottom: 16px;
+          border-bottom: 2px solid rgba(168, 85, 247, 0.3);
+          font-family: var(--font-pixel);
+          font-size: 14px;
+          color: #a855f7;
+        }
+        
+        .count-badge {
+          margin-left: auto;
+          padding: 2px 10px;
+          background: rgba(168, 85, 247, 0.2);
+          border: 1px solid #a855f7;
+          font-size: 12px;
+        }
+        
+        .spc-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        
+        .savings-plan-item {
+          padding: 12px;
+          background: var(--bg-secondary, #252525);
+          border: 1px solid var(--border-color, #ffcc00);
+        }
+        
+        .spi-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+          font-size: 12px;
+          color: #a855f7;
+        }
+        
+        .spi-name {
+          font-weight: 700;
+          color: var(--text-primary, #ffcc00);
+        }
+        
+        .spi-days {
+          margin-left: auto;
+          font-family: var(--font-mono);
+          font-size: 10px;
+          padding: 2px 6px;
+          background: rgba(168, 85, 247, 0.2);
+          border: 1px solid #a855f7;
+        }
+        
+        .spi-progress {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        
+        .progress-track {
+          height: 8px;
+          background: var(--bg-primary, #1a1a1a);
+          border: 1px solid var(--border-color, #ffcc00);
+        }
+        
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #a855f7, #60a5fa);
+          transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+          font-size: 10px;
+          font-family: var(--font-mono);
+          color: var(--text-muted, #b38f00);
+        }
+      `}</style>
+    </motion.div>
+  );
+};
+
+const LimitEditor = ({ icon: Icon, label, value, unit, onSave }) => {
   const [editing, setEditing] = useState(false);
   const [newValue, setNewValue] = useState(value);
 
@@ -146,7 +270,8 @@ const LimitEditor = ({ label, value, unit, onSave, icon: Icon }) => {
   return (
     <div className="limit-editor">
       <div className="limit-label">
-        <Icon size={14} /> {label}
+        <Icon size={14} />
+        <span>{label}</span>
       </div>
       
       <div className="limit-body">
@@ -203,13 +328,15 @@ const LimitEditor = ({ label, value, unit, onSave, icon: Icon }) => {
   );
 };
 
-export default function VaultStats({ vaultData, vendors = [], contract, onRefresh, onSaveVendor, onRemoveVendor }) {
+export default function VaultStats({ vaultData, vendors = [], contract, onRefresh, onSaveVendor, onRemoveVendor, account }) {
   const [newVendorAddress, setNewVendorAddress] = useState('');
   const [newVendorName, setNewVendorName] = useState('');
   const [addingVendor, setAddingVendor] = useState(false);
   const [localTrustedVendors, setLocalTrustedVendors] = useState([]);
   const [removedVendors, setRemovedVendors] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [savingsPlans, setSavingsPlans] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   
   const [editDailyLimit, setEditDailyLimit] = useState('');
   const [editTxLimit, setEditTxLimit] = useState('');
@@ -217,6 +344,26 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
   const [savingLimits, setSavingLimits] = useState(false);
   const [limitsError, setLimitsError] = useState('');
   const [limitsSuccess, setLimitsSuccess] = useState(false);
+
+  // Load savings plans from localStorage
+  useEffect(() => {
+    const loadAutomations = () => {
+      if (account) {
+        try {
+          const savedSavings = localStorage.getItem(`sentinel_savings_${account}`);
+          const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
+          if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
+          if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+        } catch (e) {
+          console.error('Error loading automations:', e);
+        }
+      }
+    };
+
+    loadAutomations();
+    const interval = setInterval(loadAutomations, 3000);
+    return () => clearInterval(interval);
+  }, [account]);
 
   React.useEffect(() => {
     if (vaultData) {
@@ -233,6 +380,9 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
   
   const trustedVendors = allVendors.filter(v => v.trusted);
   const recentVendors = allVendors.filter(v => !v.trusted).slice(0, 5);
+
+  // Calculate locked savings
+  const totalLockedSavings = savingsPlans.reduce((sum, p) => sum + (p.totalSaved || 0), 0);
 
   const handleAddVendor = async () => {
     if (!contract || !newVendorAddress) return;
@@ -381,6 +531,29 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                value={vaultData ? formatTimeLock(vaultData.timeLockDuration) : '—'}
                subValue="UNTRUSTED DELAY" color="amber" delay={0.3} 
              />
+
+             {/* Locked Savings Stat Box */}
+             {savingsPlans.length > 0 && (
+               <StatBox 
+                 icon={Lock} label="LOCKED SAVINGS" 
+                 value={totalLockedSavings.toFixed(0)}
+                 subValue={`${savingsPlans.length} ACTIVE PLAN${savingsPlans.length > 1 ? 'S' : ''}`} 
+                 color="purple" delay={0.35} 
+               />
+             )}
+
+             {/* Scheduled Payments Stat Box */}
+             {schedules.length > 0 && (
+               <StatBox 
+                 icon={Repeat} label="SCHEDULED" 
+                 value={schedules.length}
+                 subValue="RECURRING PAYMENTS" 
+                 color="cyan" delay={0.4} 
+               />
+             )}
+             
+             {/* Savings Plans Display */}
+             <SavingsPlansCard savingsPlans={savingsPlans} />
              
              <div className="security-card">
              <div className="card-title">
@@ -391,6 +564,9 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                   <div className="check-item"><CheckCircle size={14} color="var(--accent-emerald)" /> REENTRANCY GUARD ACTIVE</div>
                   <div className="check-item"><CheckCircle size={14} color="var(--accent-emerald)" /> TIME LOCK ENABLED</div>
                   <div className="check-item"><CheckCircle size={14} color="var(--accent-emerald)" /> AI WATCHDOG ONLINE</div>
+                  {savingsPlans.length > 0 && (
+                    <div className="check-item"><CheckCircle size={14} color="var(--accent-emerald)" /> SAVINGS LOCK ACTIVE</div>
+                  )}
                </div>
              </div>
 
@@ -561,9 +737,9 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .vault-header p { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted, #b38f00); }
         .vault-id { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); padding: 4px 12px; font-family: var(--font-mono); font-weight: 700; font-size: 12px; }
 
-        .vault-tabs { display: flex; gap: 12px; margin-bottom: 16px; }
+        .vault-tabs { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
         .vault-tabs button {
-          background: transparent; border: 2px solid var(--border-color, #ffcc00); padding: 12px 24px; font-weight: 700; font-size: 14px; cursor: pointer;
+          background: transparent; border: 2px solid var(--border-color, #ffcc00); padding: 12px 24px; font-weight: 700; font-size: 14px; cursor: pointer; color: var(--text-primary, #ffcc00);
         }
         .vault-tabs button.active { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); transform: translate(2px, 2px); }
         .vault-tabs button:hover:not(.active) { background: var(--bg-secondary, #252525); }
@@ -573,10 +749,10 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .security-card, .emergency-card { 
           grid-column: span 2; background: var(--bg-secondary); border: 2px solid var(--border-color, #ffcc00); padding: 20px;
         }
-        .card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin-bottom: 16px; }
+        .card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; margin-bottom: 16px; color: var(--text-primary, #ffcc00); }
         
         .checklist { display: flex; flex-direction: column; gap: 8px; }
-        .check-item { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+        .check-item { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text-primary, #ffcc00); }
         
         .controls-row { display: flex; gap: 12px; }
         .btn-danger { 
@@ -587,7 +763,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .btn-danger:hover { background: var(--accent-red); color: white; border-color: black; }
 
         .config-grid { max-width: 600px; }
-        .section-block h3 { font-family: var(--font-pixel); font-size: 18px; margin-bottom: 8px; }
+        .section-block h3 { font-family: var(--font-pixel); font-size: 18px; margin-bottom: 8px; color: var(--text-primary, #ffcc00); }
         .section-block p { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; }
         .limits-list { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
         .info-box { 
@@ -597,7 +773,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         }
 
         .add-vendor-section { background: var(--bg-secondary); border: 2px solid var(--border-color, #ffcc00); padding: 20px; margin-bottom: 24px; }
-        .add-vendor-section h3 { font-family: var(--font-pixel); font-size: 14px; margin-bottom: 16px; }
+        .add-vendor-section h3 { font-family: var(--font-pixel); font-size: 14px; margin-bottom: 16px; color: var(--text-primary, #ffcc00); }
         .add-form { display: flex; gap: 12px; }
         .add-form input { flex: 1; padding: 12px; border: 2px solid var(--border-color, #ffcc00); font-size: 12px; background: var(--bg-secondary, #252525); color: var(--text-primary, #ffcc00); }
         .add-form input::placeholder { color: var(--text-muted, #b38f00); }
@@ -613,7 +789,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
 
         .settings-form { display: flex; flex-direction: column; gap: 20px; margin-bottom: 24px; }
         .setting-row { display: flex; flex-direction: column; gap: 8px; }
-        .setting-row label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 12px; }
+        .setting-row label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 12px; color: var(--text-primary, #ffcc00); }
         .setting-row .input-group { display: flex; border: 2px solid var(--border-color, #ffcc00); }
         .setting-row .input-group input { 
           flex: 1; padding: 12px; border: none; outline: none; background: var(--bg-secondary, #252525); color: var(--text-primary, #ffcc00); 
@@ -621,7 +797,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         }
         .setting-row .input-group .unit { 
           padding: 12px 16px; background: var(--bg-secondary, #252525); border-left: 2px solid var(--border-color, #ffcc00); 
-          font-weight: 700; font-size: 12px; display: flex; align-items: center;
+          font-weight: 700; font-size: 12px; display: flex; align-items: center; color: var(--text-primary, #ffcc00);
         }
         .setting-row .hint { font-size: 10px; color: var(--text-muted, #b38f00); }
 
@@ -629,7 +805,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .preset-label { font-size: 10px; font-weight: 700; color: var(--text-muted, #b38f00); }
         .preset-btn { 
           padding: 6px 12px; border: 2px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a); 
-          font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.1s;
+          font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.1s; color: var(--text-primary, #ffcc00);
         }
         .preset-btn:hover { background: var(--bg-secondary, #252525); }
         .preset-btn.active { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
@@ -656,7 +832,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .info-box { 
           display: flex; align-items: flex-start; gap: 12px; padding: 16px; 
           background: rgba(245, 158, 11, 0.1); border: 2px solid var(--accent-amber); 
-          font-size: 12px; line-height: 1.5;
+          font-size: 12px; line-height: 1.5; color: var(--text-primary, #ffcc00);
         }
         .info-box strong { font-weight: 700; }
 
@@ -680,6 +856,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
           .setting-row { flex-direction: column; gap: 12px; }
           .setting-row .input-group { width: 100%; }
           .add-form input { font-size: 14px; }
+          .vault-tabs button { padding: 10px 16px; font-size: 12px; }
         }
 
         @media (max-width: 480px) {
@@ -692,6 +869,9 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
           .preset-btn { padding: 4px 8px; font-size: 10px; }
           .vendor-item { flex-direction: column; align-items: flex-start; gap: 8px; }
           .vendor-item .actions { width: 100%; justify-content: flex-end; }
+          .vault-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+          .vault-tabs { gap: 8px; }
+          .vault-tabs button { padding: 8px 12px; font-size: 11px; }
         }
       `}</style>
     </div>

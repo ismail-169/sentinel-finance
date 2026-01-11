@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Shield, TrendingUp, Clock, AlertTriangle, 
   CheckCircle, XCircle, Activity, Zap, RefreshCw,
   ArrowUpRight, ArrowDownRight, DollarSign, Users,
-  Wallet, Loader
+  Wallet, Loader, Calendar, PiggyBank, Repeat, Lock
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -130,8 +130,229 @@ const RiskMeter = ({ score }) => {
   );
 };
 
+// Automation Summary Card - Shows schedules & savings
+const AutomationSummary = ({ schedules, savingsPlans }) => {
+  const nextSchedule = schedules.length > 0 
+    ? schedules.reduce((nearest, s) => new Date(s.nextDate) < new Date(nearest.nextDate) ? s : nearest)
+    : null;
+  
+  const totalLockedSavings = savingsPlans.reduce((sum, p) => sum + (p.totalSaved || 0), 0);
+  const totalScheduledMonthly = schedules
+    .filter(s => s.frequency === 'monthly')
+    .reduce((sum, s) => sum + s.amount, 0);
+
+  const hasAutomations = schedules.length > 0 || savingsPlans.length > 0;
+
+  if (!hasAutomations) return null;
+
+  return (
+    <motion.div 
+      className="automation-summary"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.35 }}
+    >
+      <div className="auto-header">
+        <div className="auto-title">
+          <Calendar size={16} />
+          <span>AI AUTOMATION STATUS</span>
+        </div>
+        <div className="live-indicator">
+          <span className="pulse-dot"></span>
+          ACTIVE
+        </div>
+      </div>
+      
+      <div className="auto-grid">
+        <div className="auto-stat">
+          <Repeat size={18} />
+          <div className="auto-stat-content">
+            <span className="auto-val">{schedules.length}</span>
+            <span className="auto-label">SCHEDULED</span>
+          </div>
+        </div>
+        
+        <div className="auto-stat">
+          <PiggyBank size={18} />
+          <div className="auto-stat-content">
+            <span className="auto-val">{savingsPlans.length}</span>
+            <span className="auto-label">SAVINGS PLANS</span>
+          </div>
+        </div>
+        
+        <div className="auto-stat">
+          <Lock size={18} />
+          <div className="auto-stat-content">
+            <span className="auto-val">{totalLockedSavings.toFixed(0)}</span>
+            <span className="auto-label">LOCKED MNEE</span>
+          </div>
+        </div>
+        
+        <div className="auto-stat">
+          <TrendingUp size={18} />
+          <div className="auto-stat-content">
+            <span className="auto-val">{totalScheduledMonthly}</span>
+            <span className="auto-label">MNEE/MONTH</span>
+          </div>
+        </div>
+      </div>
+      
+      {nextSchedule && (
+        <div className="next-payment-alert">
+          <Clock size={12} />
+          <span>NEXT PAYMENT: <strong>{nextSchedule.amount} MNEE</strong> → {nextSchedule.vendor} on {nextSchedule.nextDate}</span>
+        </div>
+      )}
+
+      <style jsx>{`
+        .automation-summary {
+          background: var(--bg-card, #2a2a2a);
+          border: 2px solid #60a5fa;
+          padding: 20px;
+          box-shadow: 4px 4px 0px 0px rgba(96, 165, 250, 0.3);
+        }
+        
+        .auto-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-bottom: 16px;
+          margin-bottom: 16px;
+          border-bottom: 2px solid rgba(96, 165, 250, 0.3);
+        }
+        
+        .auto-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-family: var(--font-pixel);
+          font-size: 14px;
+          color: #60a5fa;
+        }
+        
+        .live-indicator {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 12px;
+          background: rgba(96, 165, 250, 0.15);
+          border: 1px solid #60a5fa;
+          font-size: 10px;
+          font-weight: 700;
+          color: #60a5fa;
+        }
+        
+        .pulse-dot {
+          width: 8px;
+          height: 8px;
+          background: #60a5fa;
+          border-radius: 50%;
+          animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.8); }
+        }
+        
+        .auto-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 16px;
+        }
+        
+        .auto-stat {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 14px;
+          background: var(--bg-secondary, #252525);
+          border: 1px solid var(--border-color, #ffcc00);
+        }
+        
+        .auto-stat svg {
+          color: #60a5fa;
+          opacity: 0.8;
+        }
+        
+        .auto-stat-content {
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .auto-val {
+          font-family: var(--font-pixel);
+          font-size: 20px;
+          color: var(--text-primary, #ffcc00);
+          line-height: 1;
+        }
+        
+        .auto-label {
+          font-size: 9px;
+          font-weight: 700;
+          color: var(--text-muted, #b38f00);
+          margin-top: 4px;
+        }
+        
+        .next-payment-alert {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 16px;
+          padding: 12px 16px;
+          background: rgba(96, 165, 250, 0.1);
+          border: 1px dashed #60a5fa;
+          font-size: 11px;
+          color: #60a5fa;
+          font-family: var(--font-mono);
+        }
+        
+        .next-payment-alert strong {
+          color: var(--text-primary, #ffcc00);
+        }
+
+        @media (max-width: 1024px) {
+          .auto-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 600px) {
+          .auto-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+          .auto-stat { padding: 10px; gap: 8px; }
+          .auto-val { font-size: 16px; }
+          .auto-header { flex-direction: column; gap: 10px; align-items: flex-start; }
+          .next-payment-alert { font-size: 10px; flex-wrap: wrap; }
+        }
+      `}</style>
+    </motion.div>
+  );
+};
+
 export default function Dashboard({ vaultData, vaultBalance, transactions = [], account, onRefresh }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [schedules, setSchedules] = useState([]);
+  const [savingsPlans, setSavingsPlans] = useState([]);
+
+  // Load schedules and savings from localStorage
+  useEffect(() => {
+    const loadAutomations = () => {
+      if (account) {
+        try {
+          const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
+          const savedSavings = localStorage.getItem(`sentinel_savings_${account}`);
+          if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+          if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
+        } catch (e) {
+          console.error('Error loading automations:', e);
+        }
+      }
+    };
+
+    loadAutomations();
+    
+    // Poll for updates every 3 seconds (for when AI chat adds new schedules)
+    const interval = setInterval(loadAutomations, 3000);
+    return () => clearInterval(interval);
+  }, [account]);
 
   const currentBalance = vaultBalance || vaultData?.balance || '0';
   const dailyLimit = vaultData?.dailyLimit || '0';
@@ -250,9 +471,12 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         />
       </div>
 
+      {/* Automation Summary - Shows scheduled payments & savings */}
+      <AutomationSummary schedules={schedules} savingsPlans={savingsPlans} />
+
       <div className="main-grid">
         <motion.div 
-          className="content-card big-chart"
+          className="content-card chart-card"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.4 }}
@@ -261,132 +485,110 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
             <h3>TRANSACTION VOLUME</h3>
             <div className="tag">LAST 10 TX</div>
           </div>
-          <div style={{ height: 240, width: '100%', marginTop: '20px' }}>
-            <ResponsiveContainer>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ffcc00" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#ffcc00" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={{ stroke: '#ffcc00', strokeWidth: 2 }}
-                  tickLine={false}
-                  tick={{ fill: '#b38f00', fontSize: 10, fontFamily: 'monospace' }}
-                />
-                <YAxis 
-                  axisLine={{ stroke: '#ffcc00', strokeWidth: 2 }}
-                  tickLine={false}
-                  tick={{ fill: '#b38f00', fontSize: 10, fontFamily: 'monospace' }}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    background: '#2a2a2a',
-                    border: '2px solid #ffcc00',
-                    boxShadow: '4px 4px 0px 0px #ffcc00',
-                    fontFamily: 'monospace',
-                    fontSize: '12px',
-                    color: '#ffcc00'
-                  }}
-                />
-                <Area 
-                  type="step" 
-                  dataKey="amount" 
-                  stroke="#ffcc00" 
-                  strokeWidth={2}
-                  fill="url(#colorAmount)" 
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {chartData.length > 0 ? (
+            <div className="chart-wrapper">
+              <ResponsiveContainer>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="amtGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ffcc00" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#ffcc00" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="transparent" 
+                    tick={{ fill: '#b38f00', fontSize: 10, fontFamily: 'monospace' }}
+                  />
+                  <YAxis 
+                    stroke="transparent" 
+                    tick={{ fill: '#b38f00', fontSize: 10, fontFamily: 'monospace' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#2a2a2a',
+                      border: '2px solid #ffcc00',
+                      fontFamily: 'monospace'
+                    }}
+                  />
+                  <Area 
+                    type="stepAfter" 
+                    dataKey="amount" 
+                    stroke="#ffcc00" 
+                    strokeWidth={2}
+                    fill="url(#amtGrad)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="empty-chart">NO TRANSACTION DATA</div>
+          )}
         </motion.div>
 
         <motion.div 
-          className="content-card pie-section"
+          className="content-card"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.5 }}
         >
           <div className="card-header">
-            <h3>STATUS RATIO</h3>
+            <h3>TX DISTRIBUTION</h3>
+            <div className="tag">STATUS</div>
           </div>
-          <div style={{ height: 200, width: '100%' }}>
-            {pieData.length > 0 ? (
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                    stroke="#ffcc00"
-                    strokeWidth={1}
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{
-                      background: '#2a2a2a',
-                      border: '2px solid #ffcc00',
-                      fontFamily: 'monospace',
-                      fontSize: '12px',
-                      color: '#ffcc00'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="empty-chart">NO DATA</div>
-            )}
-          </div>
-          <div className="legend-row">
-            {pieData.map(d => (
-              <div key={d.name} className="legend-pill">
-                <div className="dot" style={{ background: d.color }}></div>
-                {d.name}
+          {pieData.length > 0 ? (
+            <>
+              <div style={{ height: 180 }}>
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={4}
+                      dataKey="value"
+                      stroke="var(--bg-primary, #1a1a1a)"
+                      strokeWidth={2}
+                    >
+                      {pieData.map((entry, i) => (
+                        <Cell key={`cell-${i}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="legend-row">
+                {pieData.map(d => (
+                  <div key={d.name} className="legend-pill">
+                    <div className="dot" style={{ background: d.color }}></div>
+                    {d.name}: {d.value}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-chart">NO DATA</div>
+          )}
         </motion.div>
 
         <div className="col-stack">
           <motion.div 
-            className="content-card risk-box"
+            className="content-card"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.6 }}
+            transition={{ duration: 0.4, delay: 0.55 }}
           >
             <div className="card-header">
-              <h3>RISK ANALYSIS</h3>
+              <h3>THREAT ANALYSIS</h3>
               <div className="tag live">LIVE</div>
             </div>
             <RiskMeter score={avgRiskScore} />
-          </motion.div>
-
-          <motion.div 
-            className="risk-stats-box"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.7 }}
-          >
-           <div className="rs-row">
-              <img 
-                src={sentinelLogo} 
-                alt="" 
-                style={{ width: '14px', height: '14px', marginRight: '6px', verticalAlign: 'middle' }} 
-              /> 
-              Pending High-Risk <strong>{pendingTxs.filter(tx => (tx.riskScore || 0) > 70).length}</strong>
-            </div>
-            <div className="rs-row">
-              <AlertTriangle size={14} /> Alerts Today <strong>0</strong>
-            </div>
-            <div className="rs-row">
-              <Zap size={14} /> System Uptime <strong>99.9%</strong>
+            <div className="risk-stats-box" style={{ marginTop: 16 }}>
+              <div className="rs-row"><Shield size={14}/> HIGH RISK TXS <strong>0</strong></div>
+              <div className="rs-row"><AlertTriangle size={14}/> ALERTS TODAY <strong>0</strong></div>
+              <div className="rs-row"><Zap size={14}/> UPTIME <strong>99.9%</strong></div>
             </div>
           </motion.div>
         </div>
@@ -396,7 +598,7 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         className="recent-section"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.8 }}
+        transition={{ duration: 0.4, delay: 0.6 }}
       >
         <div className="card-header">
           <h3>RECENT ACTIVITY</h3>
@@ -480,6 +682,7 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
         .tag { background: var(--text-primary, #ffcc00); color: var(--bg-primary, #1a1a1a); padding: 2px 6px; font-size: 10px; font-weight: 700; }
         .tag.live { background: var(--accent-red); color: white; }
 
+        .chart-wrapper { height: 200px; }
         .empty-chart { height: 100%; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); color: var(--text-muted, #b38f00); }
         .legend-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 12px; }
         .legend-pill { font-size: 10px; display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text-primary, #ffcc00); }

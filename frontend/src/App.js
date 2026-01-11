@@ -17,6 +17,10 @@ import VaultStats from './components/VaultStats';
 import AIAgentChat from './components/AIAgentChat';
 import DepositModal from './components/DepositModal';
 import WithdrawModal from './components/WithdrawModal';
+import AgentWalletPanel from './components/AgentWalletPanel';
+import RecurringPaymentsTab from './components/RecurringPaymentsTab';
+import AgentWalletManager from './utils/AgentWalletManager';
+import RecurringScheduler from './utils/RecurringScheduler';
 
 const NETWORKS = {
   sepolia: {
@@ -27,6 +31,7 @@ const NETWORKS = {
     explorer: 'https://sepolia.etherscan.io',
     mneeToken: '0x250ff89cf1518F42F3A4c927938ED73444491715',
     vaultFactory: '0xfD3af9554C45211c228B8E7498B26A325669A484',
+    savingsContract: '0x21955e81ca4063f41080d12d3113F6ec54E7b692',
     isTestnet: true
   },
   mainnet: {
@@ -37,6 +42,7 @@ const NETWORKS = {
     explorer: 'https://etherscan.io',
     mneeToken: '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF',
     vaultFactory: '0x0000000000000000000000000000000000000000',
+    savingsContract: '', // Not deployed yet
     isTestnet: false
   }
 };
@@ -127,6 +133,11 @@ export default function App() {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [forceNewWallet, setForceNewWallet] = useState(false);
+  const [agentManager, setAgentManager] = useState(null);
+  const [agentWalletAddress, setAgentWalletAddress] = useState(null);
+  const [agentBalance, setAgentBalance] = useState('0');
+  const [showAgentPanel, setShowAgentPanel] = useState(false);
+  const [scheduler, setScheduler] = useState(null);
 
   const handleNetworkSelect = async (network) => {
     setSelectedNetwork(network);
@@ -445,6 +456,41 @@ export default function App() {
         window.location.reload();
       });
     }
+    useEffect(() => {
+  if (account && vaultAddress && selectedNetwork) {
+    const networkConfig = NETWORKS[selectedNetwork];
+    const manager = new AgentWalletManager(account, vaultAddress, networkConfig);
+    setAgentManager(manager);
+    
+    // Check if wallet exists
+    if (manager.hasWallet()) {
+      setAgentWalletAddress(manager.getAddress());
+      loadAgentBalance(manager);
+    }
+    
+    // Initialize scheduler
+    const sched = new RecurringScheduler(account, API_URL);
+    sched.load();
+    setScheduler(sched);
+  }
+}, [account, vaultAddress, selectedNetwork]);
+
+// Load agent balance function
+const loadAgentBalance = async (manager) => {
+  if (manager && provider) {
+    const balance = await manager.getBalance(provider);
+    setAgentBalance(balance);
+  }
+};
+
+// Refresh agent data
+const refreshAgentData = async () => {
+  if (agentManager) {
+    await loadAgentBalance(agentManager);
+  }
+  loadVaultData();
+  loadWalletBalance();
+};
   }, []);
 
   if (appState === 'network-select') {
@@ -586,6 +632,17 @@ export default function App() {
         )}
 
         <div className="header-right">
+          <button 
+            className="agent-btn"
+            onClick={() => setShowAgentPanel(true)}
+            title="Agent Wallet"
+          >
+            <Bot size={18} />
+            {agentWalletAddress && (
+              <span className="agent-balance">{parseFloat(agentBalance).toFixed(0)}</span>
+            )}
+          </button>
+          
           <div className="balance-group">
             <div className="bal-item">
               <span className="label">WALLET</span>
@@ -695,6 +752,7 @@ export default function App() {
                   loadAlertsFromApi();
                 }}
                 onRefresh={loadAlertsFromApi}
+                account={account}
               />
             </motion.div>
           )}
@@ -715,6 +773,7 @@ export default function App() {
                 onRefresh={loadVaultData}
                 onSaveVendor={saveVendorToStorage}
                 onRemoveVendor={removeVendorFromStorage}
+                account={account}
               />
             </motion.div>
           )}
@@ -742,6 +801,18 @@ export default function App() {
           loadVaultData();
           loadWalletBalance();
         }}
+      />
+
+      <AgentWalletPanel
+        agentManager={agentManager}
+        provider={provider}
+        signer={signer}
+        vaultBalance={vaultData?.balance || '0'}
+        vaultContract={vault}
+        networkConfig={NETWORKS[selectedNetwork]}
+        onRefresh={refreshAgentData}
+        isOpen={showAgentPanel}
+        onClose={() => setShowAgentPanel(false)}
       />
 
       <style jsx>{`
@@ -1012,6 +1083,31 @@ export default function App() {
           .logout-btn { padding: 8px; }
           .icon-btn { width: 32px; height: 32px; }
           .icon-btn svg { width: 14px; height: 14px; }
+        }
+
+        .agent-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 10px 16px;
+          background: #60a5fa;
+          border: 2px solid #60a5fa;
+          color: white;
+          font-family: var(--font-pixel);
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .agent-btn:hover {
+          background: #3b82f6;
+          transform: translate(-2px, -2px);
+          box-shadow: 4px 4px 0 #60a5fa;
+        }
+        .agent-balance {
+          background: rgba(0,0,0,0.3);
+          padding: 2px 6px;
+          font-family: var(--font-mono);
+          font-size: 10px;
         }
       `}</style>
     </div>

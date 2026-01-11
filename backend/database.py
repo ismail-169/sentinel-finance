@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from contextlib import contextmanager
@@ -50,6 +50,10 @@ def get_connection():
     except Exception as e:
         _local.connection.rollback()
         raise e
+
+def compute_hash(data: Dict[str, Any]) -> str:
+    sorted_data = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(sorted_data.encode()).hexdigest()
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +186,100 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_wallets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_address TEXT UNIQUE NOT NULL,
+                agent_address TEXT UNIQUE NOT NULL,
+                vault_address TEXT NOT NULL,
+                encrypted_key TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recurring_schedules (
+                id TEXT PRIMARY KEY,
+                user_address TEXT NOT NULL,
+                agent_address TEXT NOT NULL,
+                vault_address TEXT NOT NULL,
+                payment_type TEXT DEFAULT 'vendor',
+                vendor TEXT NOT NULL,
+                vendor_address TEXT NOT NULL,
+                amount REAL NOT NULL,
+                frequency TEXT NOT NULL,
+                execution_time TEXT DEFAULT '09:00',
+                start_date TEXT NOT NULL,
+                next_execution TEXT NOT NULL,
+                reason TEXT DEFAULT '',
+                is_trusted INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                execution_count INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
+                last_executed TEXT,
+                last_error TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS savings_plans (
+                id TEXT PRIMARY KEY,
+                user_address TEXT NOT NULL,
+                agent_address TEXT,
+                vault_address TEXT NOT NULL,
+                contract_plan_id INTEGER,
+                name TEXT NOT NULL,
+                amount REAL NOT NULL,
+                frequency TEXT,
+                lock_days INTEGER NOT NULL,
+                execution_time TEXT DEFAULT '09:00',
+                start_date TEXT NOT NULL,
+                next_deposit TEXT,
+                unlock_date TEXT NOT NULL,
+                reason TEXT DEFAULT '',
+                is_recurring INTEGER DEFAULT 1,
+                is_active INTEGER DEFAULT 1,
+                total_deposits INTEGER DEFAULT 1,
+                deposits_completed INTEGER DEFAULT 0,
+                total_saved REAL DEFAULT 0,
+                target_amount REAL NOT NULL,
+                withdrawn INTEGER DEFAULT 0,
+                last_deposit TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS execution_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                schedule_id TEXT,
+                savings_plan_id TEXT,
+                user_address TEXT NOT NULL,
+                execution_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                destination TEXT NOT NULL,
+                tx_hash TEXT,
+                status TEXT NOT NULL,
+                error_message TEXT,
+                executed_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_address TEXT NOT NULL,
+                notification_type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                tx_hash TEXT,
+                is_read INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_agent ON transactions(agent)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_vendor ON transactions(vendor)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_timestamp ON transactions(timestamp)")
@@ -194,201 +292,535 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_tx ON alerts(tx_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_ack ON alerts(acknowledged)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)")
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_wallets_user ON agent_wallets(user_address)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_recurring_user ON recurring_schedules(user_address)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_recurring_next ON recurring_schedules(next_execution)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_recurring_active ON recurring_schedules(is_active)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_savings_user ON savings_plans(user_address)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_savings_next ON savings_plans(next_deposit)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_savings_active ON savings_plans(is_active)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_user ON execution_log(user_address)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_address)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)")
 
         conn.commit()
 
-def compute_hash(data: Dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
-
-def register_vault(wallet_address: str, vault_address: str, network: str = 'sepolia') -> int:
+def save_agent_wallet(user_address: str, agent_address: str, vault_address: str, encrypted_key: str) -> bool:
+    """Save or update agent wallet for user"""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO vaults (wallet_address, vault_address, network)
-            VALUES (?, ?, ?)
-        """, (wallet_address.lower(), vault_address.lower(), network))
-        conn.commit()
-        return cursor.lastrowid
-
-def get_vault_by_wallet(wallet_address: str) -> Optional[Dict[str, Any]]:
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM vaults WHERE wallet_address = ?
-        """, (wallet_address.lower(),))
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-def get_all_vaults() -> List[Dict[str, Any]]:
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vaults")
-        return [dict(row) for row in cursor.fetchall()]
-
-def insert_transaction(tx_data: Dict[str, Any]) -> int:
-    with get_connection() as conn:
-        cursor = conn.cursor()
-
-        tx_hash = compute_hash({
-            "tx_id": tx_data["tx_id"],
-            "vault_address": tx_data.get("vault_address", ""),
-            "agent": tx_data["agent"],
-            "vendor": tx_data["vendor"],
-            "amount": tx_data["amount"],
-            "timestamp": tx_data["timestamp"]
-        })
-
-        now = datetime.utcnow().isoformat()
-
-        cursor.execute("""
-            INSERT OR REPLACE INTO transactions 
-            (tx_id, vault_address, agent, vendor, amount_wei, timestamp, execute_after, executed, revoked, reason, risk_score, risk_factors, hash, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            tx_data["tx_id"],
-            tx_data.get("vault_address", "").lower(),
-            tx_data["agent"],
-            tx_data["vendor"],
-            str(tx_data["amount"]),
-            tx_data["timestamp"],
-            tx_data["execute_after"],
-            tx_data.get("executed", 0),
-            tx_data.get("revoked", 0),
-            tx_data.get("reason", ""),
-            tx_data.get("risk_score", 0),
-            json.dumps(tx_data.get("risk_factors", [])),
-            tx_hash,
-            now
-        ))
-
-        conn.commit()
-        return cursor.lastrowid
-
-def update_transaction_status(tx_id: int, executed: bool = None, revoked: bool = None, reason: str = None) -> bool:
-    with get_connection() as conn:
-        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
         
-        updates = []
-        params = []
+        cursor.execute("SELECT * FROM agent_wallets WHERE user_address = ?", (user_address.lower(),))
+        existing = cursor.fetchone()
         
-        if executed is not None:
-            updates.append("executed = ?")
-            params.append(1 if executed else 0)
-        if revoked is not None:
-            updates.append("revoked = ?")
-            params.append(1 if revoked else 0)
-        if reason is not None:
-            updates.append("reason = ?")
-            params.append(reason)
+        if existing:
+            cursor.execute("""
+                UPDATE agent_wallets 
+                SET agent_address = ?, vault_address = ?, encrypted_key = ?, updated_at = ?
+                WHERE user_address = ?
+            """, (agent_address.lower(), vault_address.lower(), encrypted_key, now_iso, user_address.lower()))
+        else:
+            cursor.execute("""
+                INSERT INTO agent_wallets (user_address, agent_address, vault_address, encrypted_key, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_address.lower(), agent_address.lower(), vault_address.lower(), encrypted_key, now_iso, now_iso))
         
-        updates.append("updated_at = ?")
-        params.append(datetime.utcnow().isoformat())
-        params.append(tx_id)
-
-        cursor.execute(f"UPDATE transactions SET {', '.join(updates)} WHERE tx_id = ?", params)
         conn.commit()
         return cursor.rowcount > 0
 
-def update_agent_stats(agent_address: str, amount: str) -> None:
+
+def get_agent_wallet(user_address: str) -> Optional[Dict[str, Any]]:
+    """Get agent wallet for user"""
     with get_connection() as conn:
         cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM agents WHERE address = ?", (agent_address,))
+        cursor.execute("SELECT * FROM agent_wallets WHERE user_address = ?", (user_address.lower(),))
         row = cursor.fetchone()
+        return dict(row) if row else None
 
-        now = int(datetime.utcnow().timestamp())
-        now_iso = datetime.utcnow().isoformat()
-        amount_int = int(amount)
 
-        if row:
-            total_tx = row["total_transactions"] + 1
-            total_vol = str(int(row["total_volume_wei"]) + amount_int)
-            avg = str(int(total_vol) // total_tx)
-            cursor.execute("""
-                UPDATE agents SET total_transactions = ?, total_volume_wei = ?, avg_amount_wei = ?, last_active = ?, updated_at = ?
-                WHERE address = ?
-            """, (total_tx, total_vol, avg, now, now_iso, agent_address))
-        else:
-            cursor.execute("""
-                INSERT INTO agents (address, total_transactions, total_volume_wei, avg_amount_wei, last_active, updated_at)
-                VALUES (?, 1, ?, ?, ?, ?)
-            """, (agent_address, str(amount_int), str(amount_int), now, now_iso))
-
-        conn.commit()
-
-def update_vendor_stats(vendor_address: str, amount: str, trusted: bool, wallet_address: Optional[str] = None) -> None:
+def delete_agent_wallet(user_address: str) -> bool:
+    """Delete agent wallet for user"""
     with get_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM agent_wallets WHERE user_address = ?", (user_address.lower(),))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def save_recurring_schedule(schedule: Dict[str, Any]) -> bool:
+    """Save or update recurring schedule"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
         
-        wallet = wallet_address.lower() if wallet_address else ""
-
-        cursor.execute("SELECT * FROM vendors WHERE address = ? AND wallet_address = ?", (vendor_address.lower(), wallet))
-        row = cursor.fetchone()
-
-        now_iso = datetime.utcnow().isoformat()
-        amount_int = int(amount)
-
-        if row:
-            total = str(int(row["total_received_wei"]) + amount_int)
-            count = row["transaction_count"] + 1
+        cursor.execute("SELECT * FROM recurring_schedules WHERE id = ?", (schedule['id'],))
+        existing = cursor.fetchone()
+        
+        if existing:
             cursor.execute("""
-                UPDATE vendors SET total_received_wei = ?, transaction_count = ?, trusted = ?, updated_at = ?
-                WHERE address = ? AND wallet_address = ?
-            """, (total, count, 1 if trusted else 0, now_iso, vendor_address.lower(), wallet))
+                UPDATE recurring_schedules SET
+                    vendor = ?, vendor_address = ?, amount = ?, frequency = ?,
+                    execution_time = ?, next_execution = ?, reason = ?,
+                    is_trusted = ?, is_active = ?, updated_at = ?
+                WHERE id = ?
+            """, (
+                schedule.get('vendor', existing['vendor']),
+                schedule.get('vendor_address', existing['vendor_address']),
+                schedule.get('amount', existing['amount']),
+                schedule.get('frequency', existing['frequency']),
+                schedule.get('execution_time', existing['execution_time']),
+                schedule.get('next_execution', existing['next_execution']),
+                schedule.get('reason', existing['reason']),
+                1 if schedule.get('is_trusted', existing['is_trusted']) else 0,
+                1 if schedule.get('is_active', existing['is_active']) else 0,
+                now_iso, schedule['id']
+            ))
         else:
             cursor.execute("""
-                INSERT INTO vendors (wallet_address, address, trusted, total_received_wei, transaction_count, updated_at)
-                VALUES (?, ?, ?, ?, 1, ?)
-            """, (wallet, vendor_address.lower(), 1 if trusted else 0, str(amount_int), now_iso))
-
+                INSERT INTO recurring_schedules (
+                    id, user_address, agent_address, vault_address, payment_type,
+                    vendor, vendor_address, amount, frequency, execution_time,
+                    start_date, next_execution, reason, is_trusted, is_active,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                schedule['id'],
+                schedule['user_address'].lower(),
+                schedule.get('agent_address', '').lower(),
+                schedule['vault_address'].lower(),
+                schedule.get('payment_type', 'vendor'),
+                schedule['vendor'],
+                schedule['vendor_address'].lower(),
+                schedule['amount'],
+                schedule['frequency'],
+                schedule.get('execution_time', '09:00'),
+                schedule.get('start_date', now_iso),
+                schedule['next_execution'],
+                schedule.get('reason', ''),
+                1 if schedule.get('is_trusted', False) else 0,
+                1 if schedule.get('is_active', True) else 0,
+                now_iso, now_iso
+            ))
+        
         conn.commit()
+        return cursor.rowcount > 0
 
-def insert_alert(tx_id: int, alert_type: str, severity: str, message: str) -> int:
+
+def get_recurring_schedules(user_address: str, active_only: bool = True) -> List[Dict[str, Any]]:
+    """Get all recurring schedules for user"""
     with get_connection() as conn:
         cursor = conn.cursor()
+        if active_only:
+            cursor.execute("""
+                SELECT * FROM recurring_schedules 
+                WHERE user_address = ? AND is_active = 1
+                ORDER BY next_execution ASC
+            """, (user_address.lower(),))
+        else:
+            cursor.execute("""
+                SELECT * FROM recurring_schedules 
+                WHERE user_address = ?
+                ORDER BY next_execution ASC
+            """, (user_address.lower(),))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
 
+
+def get_due_schedules(before: datetime) -> List[Dict[str, Any]]:
+    """Get all schedules due for execution"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO alerts (tx_id, alert_type, severity, message)
-            VALUES (?, ?, ?, ?)
-        """, (tx_id, alert_type, severity, message))
+            SELECT s.*, a.encrypted_key, a.agent_address
+            FROM recurring_schedules s
+            LEFT JOIN agent_wallets a ON s.user_address = a.user_address
+            WHERE s.is_active = 1 AND s.next_execution <= ?
+            ORDER BY s.next_execution ASC
+        """, (before.isoformat(),))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
 
+
+def update_schedule_execution(schedule_id: str, tx_hash: str, next_execution: str) -> bool:
+    """Update schedule after successful execution"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        cursor.execute("""
+            UPDATE recurring_schedules SET
+                next_execution = ?,
+                last_executed = ?,
+                execution_count = execution_count + 1,
+                failed_count = 0,
+                last_error = NULL,
+                updated_at = ?
+            WHERE id = ?
+        """, (next_execution, now_iso, now_iso, schedule_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def update_schedule_failure(schedule_id: str, error: str) -> bool:
+    """Update schedule after failed execution"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        
+        cursor.execute("SELECT failed_count FROM recurring_schedules WHERE id = ?", (schedule_id,))
+        row = cursor.fetchone()
+        failed_count = (row['failed_count'] if row else 0) + 1
+        
+        is_active = 1 if failed_count < 3 else 0
+        
+        cursor.execute("""
+            UPDATE recurring_schedules SET
+                failed_count = ?,
+                last_error = ?,
+                is_active = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (failed_count, error, is_active, now_iso, schedule_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def pause_schedule(schedule_id: str) -> bool:
+    """Pause a schedule"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE recurring_schedules SET is_active = 0, updated_at = ?
+            WHERE id = ?
+        """, (datetime.utcnow().isoformat(), schedule_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def resume_schedule(schedule_id: str) -> bool:
+    """Resume a schedule"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE recurring_schedules SET is_active = 1, failed_count = 0, updated_at = ?
+            WHERE id = ?
+        """, (datetime.utcnow().isoformat(), schedule_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_schedule(schedule_id: str) -> bool:
+    """Delete a schedule"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM recurring_schedules WHERE id = ?", (schedule_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def save_savings_plan(plan: Dict[str, Any]) -> bool:
+    """Save or update savings plan"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        
+        cursor.execute("SELECT * FROM savings_plans WHERE id = ?", (plan['id'],))
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.execute("""
+                UPDATE savings_plans SET
+                    name = ?, amount = ?, frequency = ?, next_deposit = ?,
+                    is_active = ?, deposits_completed = ?, total_saved = ?,
+                    last_deposit = ?, updated_at = ?
+                WHERE id = ?
+            """, (
+                plan.get('name', existing['name']),
+                plan.get('amount', existing['amount']),
+                plan.get('frequency'),
+                plan.get('next_deposit'),
+                1 if plan.get('is_active', existing['is_active']) else 0,
+                plan.get('deposits_completed', existing['deposits_completed']),
+                plan.get('total_saved', existing['total_saved']),
+                plan.get('last_deposit'),
+                now_iso, plan['id']
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO savings_plans (
+                    id, user_address, agent_address, vault_address, contract_plan_id,
+                    name, amount, frequency, lock_days, execution_time,
+                    start_date, next_deposit, unlock_date, reason, is_recurring,
+                    is_active, total_deposits, target_amount, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                plan['id'],
+                plan['user_address'].lower(),
+                plan.get('agent_address', '').lower() if plan.get('agent_address') else None,
+                plan['vault_address'].lower(),
+                plan.get('contract_plan_id'),
+                plan['name'],
+                plan['amount'],
+                plan.get('frequency'),
+                plan['lock_days'],
+                plan.get('execution_time', '09:00'),
+                plan.get('start_date', now_iso),
+                plan.get('next_deposit'),
+                plan['unlock_date'],
+                plan.get('reason', ''),
+                1 if plan.get('is_recurring', True) else 0,
+                1 if plan.get('is_active', True) else 0,
+                plan.get('total_deposits', 1),
+                plan['target_amount'],
+                now_iso, now_iso
+            ))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_savings_plans(user_address: str, active_only: bool = False) -> List[Dict[str, Any]]:
+    """Get all savings plans for user"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if active_only:
+            cursor.execute("""
+                SELECT * FROM savings_plans 
+                WHERE user_address = ? AND is_active = 1 AND withdrawn = 0
+                ORDER BY unlock_date ASC
+            """, (user_address.lower(),))
+        else:
+            cursor.execute("""
+                SELECT * FROM savings_plans 
+                WHERE user_address = ?
+                ORDER BY unlock_date ASC
+            """, (user_address.lower(),))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_due_savings_deposits(before: datetime) -> List[Dict[str, Any]]:
+    """Get all savings deposits due"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.*, a.encrypted_key, a.agent_address as wallet_agent_address
+            FROM savings_plans p
+            LEFT JOIN agent_wallets a ON p.user_address = a.user_address
+            WHERE p.is_active = 1 AND p.is_recurring = 1 
+                AND p.withdrawn = 0 AND p.next_deposit <= ?
+            ORDER BY p.next_deposit ASC
+        """, (before.isoformat(),))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_savings_deposit(plan_id: str, amount: float, next_deposit: Optional[str], tx_hash: str = None) -> bool:
+    """Update savings plan after deposit"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        cursor.execute("""
+            UPDATE savings_plans SET
+                deposits_completed = deposits_completed + 1,
+                total_saved = total_saved + ?,
+                next_deposit = ?,
+                last_deposit = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (amount, next_deposit, now_iso, now_iso, plan_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def set_plan_contract_id(plan_id: str, contract_plan_id: int) -> bool:
+    """Set on-chain contract plan ID"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE savings_plans SET contract_plan_id = ?, updated_at = ?
+            WHERE id = ?
+        """, (contract_plan_id, datetime.utcnow().isoformat(), plan_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def mark_savings_withdrawn(plan_id: str) -> bool:
+    """Mark savings plan as withdrawn"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE savings_plans SET withdrawn = 1, is_active = 0, updated_at = ?
+            WHERE id = ?
+        """, (datetime.utcnow().isoformat(), plan_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_savings_plan(plan_id: str) -> bool:
+    """Delete a savings plan"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM savings_plans WHERE id = ?", (plan_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def log_execution(
+    schedule_id: Optional[str],
+    savings_plan_id: Optional[str],
+    user_address: str,
+    execution_type: str,
+    amount: float,
+    destination: str,
+    tx_hash: Optional[str],
+    status: str,
+    error_message: Optional[str] = None
+) -> int:
+    """Log an execution attempt"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO execution_log (
+                schedule_id, savings_plan_id, user_address, execution_type,
+                amount, destination, tx_hash, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            schedule_id, savings_plan_id, user_address.lower(),
+            execution_type, amount, destination.lower(),
+            tx_hash, status, error_message
+        ))
         conn.commit()
         return cursor.lastrowid
 
+
+def get_execution_history(user_address: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Get execution history for user"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM execution_log 
+            WHERE user_address = ?
+            ORDER BY executed_at DESC
+            LIMIT ?
+        """, (user_address.lower(), limit))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_old_execution_logs(before: datetime) -> int:
+    """Delete old execution logs"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM execution_log WHERE executed_at < ?", (before.isoformat(),))
+        conn.commit()
+        return cursor.rowcount
+
+def create_notification(user_address: str, notification_type: str, message: str, tx_hash: Optional[str] = None) -> int:
+    """Create a notification"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO notifications (user_address, notification_type, message, tx_hash)
+            VALUES (?, ?, ?, ?)
+        """, (user_address.lower(), notification_type, message, tx_hash))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_notifications(user_address: str, unread_only: bool = False, limit: int = 50) -> List[Dict[str, Any]]:
+    """Get notifications for user"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if unread_only:
+            cursor.execute("""
+                SELECT * FROM notifications 
+                WHERE user_address = ? AND is_read = 0
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (user_address.lower(), limit))
+        else:
+            cursor.execute("""
+                SELECT * FROM notifications 
+                WHERE user_address = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (user_address.lower(), limit))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def mark_notification_read(notification_id: int) -> bool:
+    """Mark notification as read"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notification_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def mark_all_notifications_read(user_address: str) -> int:
+    """Mark all notifications as read for user"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE notifications SET is_read = 1 WHERE user_address = ?", (user_address.lower(),))
+        conn.commit()
+        return cursor.rowcount
+
 def insert_audit_log(
-    action: str,
-    entity_type: str,
-    entity_id: str,
-    old_value: Optional[str],
-    new_value: Optional[str],
-    performed_by: str,
-    ip_address: Optional[str] = None,
+    action: str, entity_type: str, entity_id: str,
+    old_value: Optional[str], new_value: Optional[str],
+    performed_by: str, ip_address: Optional[str] = None,
     user_agent: Optional[str] = None
 ) -> int:
     with get_connection() as conn:
         cursor = conn.cursor()
-
-        log_hash = compute_hash({
+        
+        audit_hash = compute_hash({
             "action": action,
             "entity_type": entity_type,
             "entity_id": entity_id,
-            "old_value": old_value,
-            "new_value": new_value,
             "performed_by": performed_by,
             "timestamp": datetime.utcnow().isoformat()
         })
-
+        
         cursor.execute("""
             INSERT INTO audit_log (action, entity_type, entity_id, old_value, new_value, performed_by, ip_address, user_agent, hash)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (action, entity_type, entity_id, old_value, new_value, performed_by, ip_address, user_agent, log_hash))
-
+        """, (action, entity_type, entity_id, old_value, new_value, performed_by, ip_address, user_agent, audit_hash))
+        
         conn.commit()
         return cursor.lastrowid
+
+
+def register_vault(wallet_address: str, vault_address: str, network: str = "sepolia") -> bool:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO vaults (wallet_address, vault_address, network)
+                VALUES (?, ?, ?)
+                ON CONFLICT(wallet_address) DO UPDATE SET vault_address = ?, network = ?
+            """, (wallet_address.lower(), vault_address.lower(), network, vault_address.lower(), network))
+            conn.commit()
+            return True
+        except Exception:
+            return False
+
+
+def get_vault_by_wallet(wallet_address: str) -> Optional[Dict[str, Any]]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM vaults WHERE wallet_address = ?", (wallet_address.lower(),))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_all_vaults() -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM vaults ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
 
 def get_pending_transactions(vault_address: Optional[str] = None) -> List[Dict[str, Any]]:
     with get_connection() as conn:
@@ -499,6 +931,16 @@ def get_stats() -> Dict[str, Any]:
         
         cursor.execute("SELECT COUNT(*) FROM vendors WHERE trusted = 1")
         trusted_vendors = cursor.fetchone()[0]
+        
+        # New stats for recurring payments
+        cursor.execute("SELECT COUNT(*) FROM recurring_schedules WHERE is_active = 1")
+        active_schedules = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM savings_plans WHERE is_active = 1 AND withdrawn = 0")
+        active_savings = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COALESCE(SUM(total_saved), 0) FROM savings_plans WHERE withdrawn = 0")
+        total_locked = cursor.fetchone()[0]
 
         return {
             "total_transactions": total_tx,
@@ -507,7 +949,10 @@ def get_stats() -> Dict[str, Any]:
             "unacknowledged_alerts": unack_alerts,
             "total_volume_wei": str(total_volume),
             "total_agents": total_agents,
-            "trusted_vendors": trusted_vendors
+            "trusted_vendors": trusted_vendors,
+            "active_schedules": active_schedules,
+            "active_savings": active_savings,
+            "total_locked_savings": total_locked
         }
 
 def get_vendors(trusted_only: bool = False, wallet_address: Optional[str] = None) -> List[Dict[str, Any]]:

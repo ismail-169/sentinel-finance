@@ -1,7 +1,7 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config({ path: "../.env" });
+require("dotenv").config();
 
-const SEPOLIA_RPC = process.env.SEPOLIA_RPC_URL || "https://rpc.sepolia.org";
+const SEPOLIA_RPC = process.env.SEPOLIA_RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/DjC-dfft5f193-RJ1YmEi";
 const MAINNET_RPC = process.env.MAINNET_RPC_URL || "https://eth.llamarpc.com";
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
 const MAINNET_KEY = process.env.MAINNET_PRIVATE_KEY || "";

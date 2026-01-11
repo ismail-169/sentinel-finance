@@ -4,7 +4,7 @@ import secrets
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Annotated
+from typing import Optional, Annotated, List
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -39,7 +39,31 @@ from database import (
     get_vendor_by_name,
     register_vault,
     get_vault_by_wallet,
-    get_all_vaults
+    get_all_vaults,
+    save_agent_wallet,
+    get_agent_wallet,
+    delete_agent_wallet,
+    save_recurring_schedule,
+    get_recurring_schedules,
+    get_due_schedules,
+    update_schedule_execution,
+    update_schedule_failure,
+    pause_schedule,
+    resume_schedule,
+    delete_schedule,
+    save_savings_plan,
+    get_savings_plans,
+    get_due_savings_deposits,
+    update_savings_deposit,
+    set_plan_contract_id,
+    mark_savings_withdrawn,
+    delete_savings_plan,
+    log_execution,
+    get_execution_history,
+    create_notification,
+    get_notifications,
+    mark_notification_read,
+    mark_all_notifications_read
 )
 
 load_dotenv()
@@ -72,6 +96,8 @@ class Settings(BaseSettings):
     allowed_origins: str = "https://sentinelfinance.xyz,https://www.sentinelfinance.xyz,http://localhost:3000"
     rate_limit: str = "100/minute"
     debug: bool = False
+    savings_contract_address: str = ""
+    mnee_token_address: str = "0x250ff89cf1518F42F3A4c927938ED73444491715"
 
     class Config:
         env_file = ".env"
@@ -88,6 +114,9 @@ ABI_PATH = Path(__file__).parent / "SentinelVault.json"
 if not ABI_PATH.exists():
     ABI_PATH = Path(__file__).parent.parent / "artifacts" / "contracts" / "SentinelVault.sol" / "SentinelVault.json"
 
+# Savings contract ABI
+SAVINGS_ABI_PATH = Path(__file__).parent / "SentinelSavings.json"
+
 REQUEST_COUNT = Counter("sentinel_requests_total", "Total requests", ["method", "endpoint", "status"])
 REQUEST_LATENCY = Histogram("sentinel_request_latency_seconds", "Request latency", ["endpoint"])
 ERROR_COUNT = Counter("sentinel_errors_total", "Total errors", ["type"])
@@ -98,9 +127,10 @@ security = HTTPBearer(auto_error=False)
 
 w3 = Web3(Web3.HTTPProvider(settings.rpc_url))
 vault = None
+savings_contract = None
 
 def load_contract():
-    global vault
+    global vault, savings_contract
     if not DEPLOYMENT_PATH.exists():
         logger.warning("deployment.json not found - running without contract")
         return None
@@ -122,6 +152,17 @@ def load_contract():
             abi=abi
         )
         logger.info("contract_loaded", address=vault_address)
+        
+        # Load savings contract if available
+        savings_address = deployment.get("savingsContract") or settings.savings_contract_address
+        if savings_address and SAVINGS_ABI_PATH.exists():
+            savings_abi = json.loads(SAVINGS_ABI_PATH.read_text())["abi"]
+            savings_contract = w3.eth.contract(
+                address=Web3.to_checksum_address(savings_address),
+                abi=savings_abi
+            )
+            logger.info("savings_contract_loaded", address=savings_address)
+        
         return vault
     except Exception as e:
         logger.warning(f"Contract loading failed: {e} - running without contract")
@@ -137,8 +178,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Sentinel Finance API",
-    version="2.0.0",
-    description="AI-powered security infrastructure for MNEE stablecoin",
+    version="2.1.0",
+    description="AI-powered security infrastructure for MNEE stablecoin with Agent Wallet support",
     lifespan=lifespan
 )
 
@@ -153,6 +194,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"]
 )
+
 
 class RevokeRequest(BaseModel):
     tx_id: int = Field(..., ge=0)
@@ -187,13 +229,11 @@ class VendorRequest(BaseModel):
             raise ValueError("Invalid Ethereum address")
         return Web3.to_checksum_address(v)
 
-
 class VendorWithNameRequest(BaseModel):
-    """Request to add a vendor with a name for AI agent recognition"""
     address: str = Field(..., min_length=42, max_length=42)
     name: str = Field(..., min_length=1, max_length=100)
     trusted: bool = True
-    private_key: str  # Still needed to update blockchain
+    private_key: str
 
     @field_validator("address")
     @classmethod
@@ -206,6 +246,96 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+class VaultRegistration(BaseModel):
+    wallet_address: str
+    vault_address: str
+    network: str = "sepolia"
+
+    @field_validator("wallet_address", "vault_address")
+    @classmethod
+    def validate_address(cls, v):
+        if not Web3.is_address(v):
+            raise ValueError("Invalid Ethereum address")
+        return v.lower()
+
+class AgentPaymentRequest(BaseModel):
+    vendor: str
+    amount: str
+    reason: Optional[str] = ""
+    vault: Optional[str] = None
+    private_key: str
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v):
+        try:
+            amount = float(v)
+            if amount <= 0:
+                raise ValueError("Amount must be positive")
+            return v
+        except ValueError:
+            raise ValueError("Invalid amount format")
+
+# New models for Agent Wallet system
+class AgentWalletRegister(BaseModel):
+    user_address: str
+    agent_address: str
+    vault_address: str
+    encrypted_key: str
+
+    @field_validator("user_address", "agent_address", "vault_address")
+    @classmethod
+    def validate_address(cls, v):
+        if not Web3.is_address(v):
+            raise ValueError("Invalid Ethereum address")
+        return v.lower()
+
+class RecurringScheduleCreate(BaseModel):
+    id: str
+    user_address: str
+    vault_address: str
+    agent_address: Optional[str] = None
+    vendor: str
+    vendor_address: str
+    amount: float
+    frequency: str
+    execution_time: str = "09:00"
+    start_date: Optional[str] = None
+    next_execution: str
+    reason: Optional[str] = ""
+    is_trusted: bool = False
+
+class RecurringScheduleUpdate(BaseModel):
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    execution_time: Optional[str] = None
+    next_execution: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class SavingsPlanCreate(BaseModel):
+    id: str
+    user_address: str
+    vault_address: str
+    agent_address: Optional[str] = None
+    name: str
+    amount: float
+    frequency: Optional[str] = None
+    lock_days: int
+    execution_time: str = "09:00"
+    start_date: Optional[str] = None
+    next_deposit: Optional[str] = None
+    unlock_date: str
+    reason: Optional[str] = ""
+    is_recurring: bool = True
+    total_deposits: int = 1
+    target_amount: float
+
+class SyncRequest(BaseModel):
+    user_address: str
+    schedules: List[dict]
+    savings_plans: List[dict]
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
@@ -246,6 +376,7 @@ async def get_client_info(request: Request) -> dict:
         "ip": request.client.host if request.client else "unknown",
         "user_agent": request.headers.get("user-agent", "unknown")
     }
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -297,15 +428,17 @@ async def health():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.0.0",
+        "version": "2.1.0",
         "blockchain_connected": w3.is_connected(),
-        "contract_loaded": vault is not None
+        "contract_loaded": vault is not None,
+        "savings_contract_loaded": savings_contract is not None
     }
 
 @app.get("/metrics")
 async def metrics():
     from starlette.responses import Response
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 @app.post("/api/v1/auth/token", response_model=TokenResponse)
 @limiter.limit("10/minute")
@@ -320,17 +453,6 @@ async def get_token(request: Request, x_api_key: Annotated[str, Header()]):
         expires_in=settings.jwt_expire_minutes * 60
     )
 
-class VaultRegistration(BaseModel):
-    wallet_address: str
-    vault_address: str
-    network: str = "sepolia"
-
-    @field_validator("wallet_address", "vault_address")
-    @classmethod
-    def validate_address(cls, v):
-        if not Web3.is_address(v):
-            raise ValueError("Invalid Ethereum address")
-        return v.lower()
 
 @app.post("/api/v1/vault/register")
 @limiter.limit("10/minute")
@@ -397,73 +519,43 @@ async def get_limits(request: Request, auth: bool = Depends(verify_api_key)):
         "timelock_duration_seconds": timelock
     }
 
+
 @app.get("/api/v1/transactions/pending")
 @limiter.limit(settings.rate_limit)
-async def pending_transactions(
-    request: Request, 
+async def get_pending(
+    request: Request,
     auth: bool = Depends(verify_api_key),
-    context: dict = Depends(get_wallet_context)
+    wallet: dict = Depends(get_wallet_context)
 ):
-    txs = get_pending_transactions(vault_address=context.get("vault_address"))
-    return {"transactions": txs, "count": len(txs)}
+    return {"transactions": get_pending_transactions(wallet.get("vault_address"))}
 
 @app.get("/api/v1/transactions/history")
 @limiter.limit(settings.rate_limit)
-async def transaction_history(
+async def get_history(
     request: Request,
     limit: int = 100,
     offset: int = 0,
     auth: bool = Depends(verify_api_key),
-    context: dict = Depends(get_wallet_context)
+    wallet: dict = Depends(get_wallet_context)
 ):
-    limit = min(limit, 500)
-    txs = get_transaction_history(limit, offset, vault_address=context.get("vault_address"))
-    return {"transactions": txs, "count": len(txs), "limit": limit, "offset": offset}
+    return {
+        "transactions": get_transaction_history(limit, offset, wallet.get("vault_address")),
+        "limit": limit,
+        "offset": offset
+    }
 
 @app.get("/api/v1/transactions/{tx_id}")
 @limiter.limit(settings.rate_limit)
 async def get_transaction(
-    request: Request, 
-    tx_id: int, 
+    request: Request,
+    tx_id: int,
     auth: bool = Depends(verify_api_key),
-    context: dict = Depends(get_wallet_context)
+    wallet: dict = Depends(get_wallet_context)
 ):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-    
-    try:
-        txn = vault.functions.getTransaction(tx_id).call()
-        db_tx = get_transaction_by_id(tx_id, vault_address=context.get("vault_address"))
-        integrity = verify_transaction_integrity(tx_id)
-        
-        return {
-            "agent": txn[0],
-            "vendor": txn[1],
-            "amount_wei": str(txn[2]),
-            "amount_formatted": str(txn[2] / 10**18),
-            "timestamp": txn[3],
-            "execute_after": txn[4],
-            "executed": txn[5],
-            "revoked": txn[6],
-            "reason": txn[7],
-            "integrity_verified": integrity,
-            "risk_score": db_tx.get("risk_score") if db_tx else None,
-            "risk_factors": json.loads(db_tx.get("risk_factors", "[]")) if db_tx else []
-        }
-    except Exception as e:
-        logger.error("transaction_fetch_failed", tx_id=tx_id, error=str(e))
+    tx = get_transaction_by_id(tx_id, wallet.get("vault_address"))
+    if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-
-@app.get("/api/v1/agents/{address}")
-@limiter.limit(settings.rate_limit)
-async def get_agent(request: Request, address: str, auth: bool = Depends(verify_api_key)):
-    if not Web3.is_address(address):
-        raise HTTPException(status_code=400, detail="Invalid address format")
-    
-    profile = get_agent_profile(Web3.to_checksum_address(address))
-    if not profile:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return profile
+    return tx
 
 @app.get("/api/v1/vendors")
 @limiter.limit(settings.rate_limit)
@@ -471,365 +563,9 @@ async def list_vendors(
     request: Request,
     trusted_only: bool = False,
     auth: bool = Depends(verify_api_key),
-    context: dict = Depends(get_wallet_context)
+    wallet: dict = Depends(get_wallet_context)
 ):
-    vendors = get_vendors(trusted_only, wallet_address=context.get("wallet_address"))
-    return {"vendors": vendors, "count": len(vendors)}
-
-
-class SimpleVendorRequest(BaseModel):
-    address: str
-    name: str
-    trusted: bool = True
-
-    @field_validator("address")
-    @classmethod
-    def validate_address(cls, v):
-        if not Web3.is_address(v):
-            raise ValueError("Invalid Ethereum address")
-        return Web3.to_checksum_address(v)
-
-
-@app.post("/api/v1/vendors")
-@limiter.limit("30/minute")
-async def save_vendor_name(
-    request: Request,
-    req: SimpleVendorRequest,
-    auth: bool = Depends(verify_api_key),
-    context: dict = Depends(get_wallet_context)
-):
-    try:
-        upsert_vendor(req.address, req.name, req.trusted, wallet_address=context.get("wallet_address"))
-        
-        logger.info(
-            "vendor_name_saved",
-            address=req.address,
-            name=req.name,
-            trusted=req.trusted,
-            wallet=context.get("wallet_address")
-        )
-
-        return {
-            "success": True,
-            "vendor": {
-                "address": req.address,
-                "name": req.name,
-                "trusted": req.trusted
-            }
-        }
-    except Exception as e:
-        logger.error("save_vendor_name_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/v1/vendors/{address}")
-@limiter.limit(settings.rate_limit)
-async def check_vendor(request: Request, address: str, auth: bool = Depends(verify_api_key)):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-    
-    if not Web3.is_address(address):
-        raise HTTPException(status_code=400, detail="Invalid address format")
-    
-    checksum_addr = Web3.to_checksum_address(address)
-    trusted = vault.functions.trustedVendors(checksum_addr).call()
-    return {"address": checksum_addr, "trusted": trusted}
-
-@app.get("/api/v1/alerts")
-@limiter.limit(settings.rate_limit)
-async def list_alerts(
-    request: Request,
-    acknowledged: Optional[bool] = None,
-    limit: int = 100,
-    auth: bool = Depends(verify_api_key)
-):
-    ack_filter = None if acknowledged is None else (1 if acknowledged else 0)
-    alerts = get_alerts(ack_filter, min(limit, 500))
-    return {"alerts": alerts, "count": len(alerts)}
-
-@app.post("/api/v1/alerts/acknowledge")
-@limiter.limit("30/minute")
-async def ack_alert(
-    request: Request,
-    req: AlertAckRequest,
-    auth: bool = Depends(verify_api_key)
-):
-    client_info = await get_client_info(request)
-    
-    success = acknowledge_alert(req.alert_id, "api_client")
-    if not success:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    
-    insert_audit_log(
-        "alert_acknowledged",
-        "alert",
-        str(req.alert_id),
-        None,
-        None,
-        "api_client",
-        client_info["ip"],
-        client_info["user_agent"]
-    )
-    
-    return {"success": True, "alert_id": req.alert_id}
-
-@app.post("/api/v1/transactions/revoke")
-@limiter.limit("10/minute")
-async def revoke_transaction(
-    request: Request,
-    req: RevokeRequest,
-    auth: bool = Depends(verify_api_key)
-):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-    
-    client_info = await get_client_info(request)
-
-    try:
-        private_key = req.private_key if req.private_key.startswith("0x") else f"0x{req.private_key}"
-        account = w3.eth.account.from_key(private_key)
-        nonce = w3.eth.get_transaction_count(account.address)
-        
-        gas_price = w3.eth.gas_price
-        gas_estimate = vault.functions.revokeTransaction(req.tx_id, req.reason).estimate_gas({
-            "from": account.address
-        })
-        
-        gas_limit = int(gas_estimate * 1.2)
-
-        tx = vault.functions.revokeTransaction(req.tx_id, req.reason).build_transaction({
-            "from": account.address,
-            "nonce": nonce,
-            "gas": gas_limit,
-            "gasPrice": gas_price
-        })
-
-        signed = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-
-        insert_audit_log(
-            "revoke_submitted",
-            "transaction",
-            str(req.tx_id),
-            None,
-            req.reason,
-            account.address,
-            client_info["ip"],
-            client_info["user_agent"]
-        )
-
-        logger.info("transaction_revoked", tx_id=req.tx_id, tx_hash=tx_hash.hex())
-
-        return {
-            "success": True,
-            "tx_hash": tx_hash.hex(),
-            "gas_used": gas_limit,
-            "revoked_tx_id": req.tx_id
-        }
-
-    except ValueError as e:
-        logger.warning("revoke_validation_error", error=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error("revoke_failed", tx_id=req.tx_id, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Revoke failed: {str(e)}")
-
-@app.post("/api/v1/vault/limits")
-@limiter.limit("5/minute")
-async def set_limits(
-    request: Request,
-    req: LimitsRequest,
-    auth: bool = Depends(verify_api_key)
-):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-
-    client_info = await get_client_info(request)
-
-    try:
-        private_key = req.private_key if req.private_key.startswith("0x") else f"0x{req.private_key}"
-        account = w3.eth.account.from_key(private_key)
-        nonce = w3.eth.get_transaction_count(account.address)
-
-        daily = int(req.daily_limit)
-        tx_limit = int(req.transaction_limit)
-
-        gas_estimate = vault.functions.setLimits(daily, tx_limit).estimate_gas({
-            "from": account.address
-        })
-
-        tx = vault.functions.setLimits(daily, tx_limit).build_transaction({
-            "from": account.address,
-            "nonce": nonce,
-            "gas": int(gas_estimate * 1.2),
-            "gasPrice": w3.eth.gas_price
-        })
-
-        signed = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-
-        insert_audit_log(
-            "limits_updated",
-            "vault",
-            "limits",
-            None,
-            f"daily:{daily},tx:{tx_limit}",
-            account.address,
-            client_info["ip"],
-            client_info["user_agent"]
-        )
-
-        return {"success": True, "tx_hash": tx_hash.hex()}
-
-    except Exception as e:
-        logger.error("set_limits_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/v1/vendors/set")
-@limiter.limit("10/minute")
-async def set_vendor(
-    request: Request,
-    req: VendorRequest,
-    auth: bool = Depends(verify_api_key)
-):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-
-    client_info = await get_client_info(request)
-
-    try:
-        private_key = req.private_key if req.private_key.startswith("0x") else f"0x{req.private_key}"
-        account = w3.eth.account.from_key(private_key)
-        nonce = w3.eth.get_transaction_count(account.address)
-
-        gas_estimate = vault.functions.setTrustedVendor(req.vendor, req.trusted).estimate_gas({
-            "from": account.address
-        })
-
-        tx = vault.functions.setTrustedVendor(req.vendor, req.trusted).build_transaction({
-            "from": account.address,
-            "nonce": nonce,
-            "gas": int(gas_estimate * 1.2),
-            "gasPrice": w3.eth.gas_price
-        })
-
-        signed = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-
-        insert_audit_log(
-            "vendor_updated",
-            "vendor",
-            req.vendor,
-            None,
-            str(req.trusted),
-            account.address,
-            client_info["ip"],
-            client_info["user_agent"]
-        )
-
-        return {"success": True, "tx_hash": tx_hash.hex(), "vendor": req.vendor, "trusted": req.trusted}
-
-    except Exception as e:
-        logger.error("set_vendor_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/v1/vendors/add")
-@limiter.limit("10/minute")
-async def add_vendor_with_name(
-    request: Request,
-    req: VendorWithNameRequest,
-    auth: bool = Depends(verify_api_key)
-):
-    """
-    Add a trusted vendor with a name.
-    This updates both the blockchain AND the database with the vendor name.
-    The name is used by AI agents to match vendor requests.
-    """
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-
-    client_info = await get_client_info(request)
-
-    try:
-        private_key = req.private_key if req.private_key.startswith("0x") else f"0x{req.private_key}"
-        account = w3.eth.account.from_key(private_key)
-        nonce = w3.eth.get_transaction_count(account.address)
-
-        # Update blockchain
-        gas_estimate = vault.functions.setTrustedVendor(req.address, req.trusted).estimate_gas({
-            "from": account.address
-        })
-
-        tx = vault.functions.setTrustedVendor(req.address, req.trusted).build_transaction({
-            "from": account.address,
-            "nonce": nonce,
-            "gas": int(gas_estimate * 1.2),
-            "gasPrice": w3.eth.gas_price
-        })
-
-        signed = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-
-        # Save to database with name
-        upsert_vendor(req.address, req.name, req.trusted)
-
-        insert_audit_log(
-            "vendor_added_with_name",
-            "vendor",
-            req.address,
-            None,
-            f"name={req.name},trusted={req.trusted}",
-            account.address,
-            client_info["ip"],
-            client_info["user_agent"]
-        )
-
-        logger.info(
-            "vendor_added",
-            address=req.address,
-            name=req.name,
-            trusted=req.trusted,
-            tx_hash=tx_hash.hex()
-        )
-
-        return {
-            "success": True,
-            "tx_hash": tx_hash.hex(),
-            "vendor": {
-                "address": req.address,
-                "name": req.name,
-                "trusted": req.trusted
-            }
-        }
-
-    except Exception as e:
-        logger.error("add_vendor_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =============================================================================
-# AGENT API - For AI agents to request payments via REST API
-# =============================================================================
-
-class AgentPaymentRequest(BaseModel):
-    vendor: str  # Can be vendor name or address
-    amount: str  # Amount in MNEE (will be converted to wei)
-    reason: Optional[str] = ""
-    vault: Optional[str] = None  # Optional vault address override
-    private_key: str  # Agent's private key to sign the request
-
-    @field_validator("amount")
-    @classmethod
-    def validate_amount(cls, v):
-        try:
-            amount = float(v)
-            if amount <= 0:
-                raise ValueError("Amount must be positive")
-            return v
-        except ValueError:
-            raise ValueError("Invalid amount format")
-
+    return {"vendors": get_vendors(trusted_only, wallet.get("wallet_address"))}
 
 @app.get("/api/v1/vendors/search")
 @limiter.limit(settings.rate_limit)
@@ -840,30 +576,97 @@ async def search_vendors(
     trusted_only: bool = True,
     auth: bool = Depends(verify_api_key)
 ):
-    """Search vendors by name or address"""
     vendors = get_vendors(trusted_only)
     
     results = []
     for vendor in vendors:
-        # Match by name (case-insensitive partial match)
         if name:
             vendor_name = (vendor.get("name") or "").lower()
             if name.lower() in vendor_name or vendor_name in name.lower():
                 results.append(vendor)
                 continue
         
-        # Match by address
         if address:
             vendor_addr = (vendor.get("address") or "").lower()
             if vendor_addr == address.lower():
                 results.append(vendor)
                 continue
         
-        # If no filters, return all
         if not name and not address:
             results.append(vendor)
     
     return {"vendors": results, "count": len(results)}
+
+@app.post("/api/v1/vendors/add")
+@limiter.limit("20/minute")
+async def add_vendor_with_name(
+    request: Request,
+    req: VendorWithNameRequest,
+    auth: bool = Depends(verify_api_key),
+    wallet: dict = Depends(get_wallet_context)
+):
+    try:
+        upsert_vendor(req.address, req.name, req.trusted, wallet.get("wallet_address"))
+        logger.info("vendor_added", address=req.address, name=req.name)
+        return {
+            "success": True,
+            "vendor": {
+                "address": req.address,
+                "name": req.name,
+                "trusted": req.trusted
+            }
+        }
+    except Exception as e:
+        logger.error("add_vendor_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/alerts")
+@limiter.limit(settings.rate_limit)
+async def list_alerts(
+    request: Request,
+    acknowledged: Optional[int] = None,
+    limit: int = 100,
+    auth: bool = Depends(verify_api_key)
+):
+    return {"alerts": get_alerts(acknowledged, limit)}
+
+@app.post("/api/v1/alerts/acknowledge")
+@limiter.limit("30/minute")
+async def ack_alert(
+    request: Request,
+    req: AlertAckRequest,
+    auth: bool = Depends(verify_api_key)
+):
+    success = acknowledge_alert(req.alert_id, "api_user")
+    if not success:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return {"success": True, "alert_id": req.alert_id}
+
+
+@app.get("/api/v1/stats")
+@limiter.limit(settings.rate_limit)
+async def get_stats_endpoint(request: Request, auth: bool = Depends(verify_api_key)):
+    try:
+        db_stats = get_stats()
+        
+        response = {
+            **db_stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        if vault:
+            try:
+                balance = vault.functions.getVaultBalance().call()
+                response["vault_balance_wei"] = str(balance)
+                response["vault_balance_formatted"] = str(balance / 10**18)
+            except:
+                pass
+        
+        return response
+    except Exception as e:
+        logger.error("stats_fetch_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 
 @app.post("/api/v1/agent/payment")
@@ -873,24 +676,16 @@ async def agent_request_payment(
     req: AgentPaymentRequest,
     auth: bool = Depends(verify_api_key)
 ):
-    """
-    AI Agent Payment Request API
-    
-    Allows external AI agents to request payments through Sentinel.
-    The payment goes through the same risk scoring and timelock as UI requests.
-    """
     if not vault:
         raise HTTPException(status_code=503, detail="Contract not loaded")
 
     client_info = await get_client_info(request)
 
     try:
-        # Resolve vendor - could be name or address
         vendor_address = req.vendor
         vendor_name = req.vendor
         is_trusted = False
         
-        # If not an address, search by name
         if not Web3.is_address(req.vendor):
             vendors = get_vendors(trusted_only=True)
             for v in vendors:
@@ -901,28 +696,22 @@ async def agent_request_payment(
                     is_trusted = v.get("trusted", 0) == 1
                     break
             else:
-                # Not found in trusted vendors - generate new address or reject
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Vendor '{req.vendor}' not found in trusted vendors. Add it in Settings first or provide a valid address."
+                    detail=f"Vendor '{req.vendor}' not found in trusted vendors."
                 )
         else:
-            # It's an address - check if trusted
             vendor_address = Web3.to_checksum_address(req.vendor)
             try:
                 is_trusted = vault.functions.trustedVendors(vendor_address).call()
             except:
                 is_trusted = False
 
-        # Convert amount to wei
         amount_wei = int(float(req.amount) * 10**18)
-
-        # Sign and send transaction
         private_key = req.private_key if req.private_key.startswith("0x") else f"0x{req.private_key}"
         account = w3.eth.account.from_key(private_key)
         nonce = w3.eth.get_transaction_count(account.address)
 
-        # Build requestPayment transaction
         gas_estimate = vault.functions.requestPayment(
             Web3.to_checksum_address(vendor_address),
             amount_wei,
@@ -942,18 +731,14 @@ async def agent_request_payment(
 
         signed = w3.eth.account.sign_transaction(tx, private_key)
         tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-
-        # Wait for receipt
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
 
-        # Calculate risk score
         amount_float = float(req.amount)
         if is_trusted:
             risk_score = 0.15 if amount_float <= 500 else 0.45
         else:
             risk_score = 0.65 if amount_float <= 100 else 0.85
 
-        # Determine status based on risk
         if risk_score > 0.7:
             status = "blocked"
         elif risk_score > 0.4:
@@ -961,7 +746,6 @@ async def agent_request_payment(
         else:
             status = "approved"
 
-        # Log the request
         insert_audit_log(
             "agent_payment_requested",
             "agent_api",
@@ -987,7 +771,6 @@ async def agent_request_payment(
         return {
             "success": True,
             "tx_hash": tx_hash.hex(),
-            "tx_id": receipt.get("logs", [{}])[0].get("topics", [b"", b""])[1].hex() if receipt.get("logs") else None,
             "vendor": vendor_address,
             "vendor_name": vendor_name,
             "amount": req.amount,
@@ -1004,17 +787,12 @@ async def agent_request_payment(
         logger.error("agent_payment_failed", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/api/v1/agent/vendors")
 @limiter.limit(settings.rate_limit)
 async def agent_list_vendors(
     request: Request,
     auth: bool = Depends(verify_api_key)
 ):
-    """
-    List trusted vendors for AI agents
-    Returns a simplified list with name and address
-    """
     vendors = get_vendors(trusted_only=True)
     return {
         "vendors": [
@@ -1024,26 +802,342 @@ async def agent_list_vendors(
         "count": len(vendors)
     }
 
-
-@app.get("/api/v1/stats")
-@limiter.limit(settings.rate_limit)
-async def get_stats_endpoint(request: Request, auth: bool = Depends(verify_api_key)):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
-
+@app.post("/api/v1/agent-wallet/register")
+@limiter.limit("10/minute")
+async def register_agent_wallet(
+    request: Request,
+    req: AgentWalletRegister,
+    auth: bool = Depends(verify_api_key)
+):
+    """Register or update an agent wallet for a user"""
     try:
-        balance = vault.functions.getVaultBalance().call()
-        db_stats = get_stats()
-
+        save_agent_wallet(
+            req.user_address,
+            req.agent_address,
+            req.vault_address,
+            req.encrypted_key
+        )
+        logger.info("agent_wallet_registered", user=req.user_address, agent=req.agent_address)
         return {
-            "vault_balance_wei": str(balance),
-            "vault_balance_formatted": str(balance / 10**18),
-            **db_stats,
-            "timestamp": datetime.utcnow().isoformat()
+            "success": True,
+            "user_address": req.user_address,
+            "agent_address": req.agent_address
         }
     except Exception as e:
-        logger.error("stats_fetch_failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to fetch stats")
+        logger.error("agent_wallet_registration_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/agent-wallet/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def get_agent_wallet_info(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Get agent wallet info for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    wallet = get_agent_wallet(user_address)
+    if not wallet:
+        raise HTTPException(status_code=404, detail="Agent wallet not found")
+    
+        return {
+        "user_address": wallet["user_address"],
+        "agent_address": wallet["agent_address"],
+        "vault_address": wallet["vault_address"],
+        "created_at": wallet["created_at"]
+    }
+
+@app.delete("/api/v1/agent-wallet/{user_address}")
+@limiter.limit("10/minute")
+async def remove_agent_wallet(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Delete agent wallet for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    success = delete_agent_wallet(user_address)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent wallet not found")
+    
+    return {"success": True, "user_address": user_address}
+
+
+
+@app.post("/api/v1/recurring/schedule")
+@limiter.limit("30/minute")
+async def create_recurring_schedule(
+    request: Request,
+    req: RecurringScheduleCreate,
+    auth: bool = Depends(verify_api_key)
+):
+    """Create a new recurring payment schedule"""
+    try:
+        save_recurring_schedule(req.dict())
+        logger.info("recurring_schedule_created", id=req.id, vendor=req.vendor)
+        return {"success": True, "schedule_id": req.id}
+    except Exception as e:
+        logger.error("recurring_schedule_creation_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/recurring/schedules/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def list_recurring_schedules(
+    request: Request,
+    user_address: str,
+    active_only: bool = True,
+    auth: bool = Depends(verify_api_key)
+):
+    """List all recurring schedules for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    schedules = get_recurring_schedules(user_address, active_only)
+    return {"schedules": schedules, "count": len(schedules)}
+
+@app.put("/api/v1/recurring/schedule/{schedule_id}")
+@limiter.limit("30/minute")
+async def update_recurring_schedule(
+    request: Request,
+    schedule_id: str,
+    req: RecurringScheduleUpdate,
+    auth: bool = Depends(verify_api_key)
+):
+    """Update a recurring schedule"""
+    try:
+        updates = {k: v for k, v in req.dict().items() if v is not None}
+        updates["id"] = schedule_id
+        save_recurring_schedule(updates)
+        return {"success": True, "schedule_id": schedule_id}
+    except Exception as e:
+        logger.error("recurring_schedule_update_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/recurring/schedule/{schedule_id}/pause")
+@limiter.limit("30/minute")
+async def pause_recurring_schedule(
+    request: Request,
+    schedule_id: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Pause a recurring schedule"""
+    success = pause_schedule(schedule_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"success": True, "schedule_id": schedule_id, "status": "paused"}
+
+@app.post("/api/v1/recurring/schedule/{schedule_id}/resume")
+@limiter.limit("30/minute")
+async def resume_recurring_schedule(
+    request: Request,
+    schedule_id: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Resume a paused schedule"""
+    success = resume_schedule(schedule_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"success": True, "schedule_id": schedule_id, "status": "active"}
+
+@app.delete("/api/v1/recurring/schedule/{schedule_id}")
+@limiter.limit("30/minute")
+async def delete_recurring_schedule(
+    request: Request,
+    schedule_id: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Delete a recurring schedule"""
+    success = delete_schedule(schedule_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"success": True, "schedule_id": schedule_id}
+
+@app.post("/api/v1/savings/plan")
+@limiter.limit("30/minute")
+async def create_savings_plan(
+    request: Request,
+    req: SavingsPlanCreate,
+    auth: bool = Depends(verify_api_key)
+):
+    """Create a new savings plan"""
+    try:
+        save_savings_plan(req.dict())
+        logger.info("savings_plan_created", id=req.id, name=req.name)
+        return {"success": True, "plan_id": req.id}
+    except Exception as e:
+        logger.error("savings_plan_creation_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/savings/plans/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def list_savings_plans(
+    request: Request,
+    user_address: str,
+    active_only: bool = False,
+    auth: bool = Depends(verify_api_key)
+):
+    """List all savings plans for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    plans = get_savings_plans(user_address, active_only)
+    return {"plans": plans, "count": len(plans)}
+
+@app.put("/api/v1/savings/plan/{plan_id}/contract-id")
+@limiter.limit("30/minute")
+async def set_savings_contract_id(
+    request: Request,
+    plan_id: str,
+    contract_plan_id: int,
+    auth: bool = Depends(verify_api_key)
+):
+    """Set on-chain contract ID for savings plan"""
+    success = set_plan_contract_id(plan_id, contract_plan_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return {"success": True, "plan_id": plan_id, "contract_plan_id": contract_plan_id}
+
+@app.post("/api/v1/savings/plan/{plan_id}/withdraw")
+@limiter.limit("30/minute")
+async def withdraw_savings_plan(
+    request: Request,
+    plan_id: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Mark savings plan as withdrawn"""
+    success = mark_savings_withdrawn(plan_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return {"success": True, "plan_id": plan_id, "status": "withdrawn"}
+
+@app.delete("/api/v1/savings/plan/{plan_id}")
+@limiter.limit("30/minute")
+async def delete_savings_plan_endpoint(
+    request: Request,
+    plan_id: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Delete a savings plan"""
+    success = delete_savings_plan(plan_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return {"success": True, "plan_id": plan_id}
+
+@app.post("/api/v1/recurring/sync")
+@limiter.limit("10/minute")
+async def sync_recurring_data(
+    request: Request,
+    req: SyncRequest,
+    auth: bool = Depends(verify_api_key)
+):
+    """Sync all recurring schedules and savings plans from frontend"""
+    try:
+        for schedule in req.schedules:
+            schedule["user_address"] = req.user_address
+            save_recurring_schedule(schedule)
+        
+        for plan in req.savings_plans:
+            plan["user_address"] = req.user_address
+            save_savings_plan(plan)
+        
+        logger.info(
+            "recurring_data_synced",
+            user=req.user_address,
+            schedules=len(req.schedules),
+            plans=len(req.savings_plans)
+        )
+        
+        return {
+            "success": True,
+            "synced_schedules": len(req.schedules),
+            "synced_plans": len(req.savings_plans)
+        }
+    except Exception as e:
+        logger.error("sync_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/recurring/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def get_all_recurring_data(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Get all recurring schedules and savings plans for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    schedules = get_recurring_schedules(user_address, active_only=False)
+    plans = get_savings_plans(user_address, active_only=False)
+    
+    return {
+        "schedules": schedules,
+        "savingsPlans": plans
+    }
+
+@app.get("/api/v1/notifications/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def list_notifications(
+    request: Request,
+    user_address: str,
+    unread_only: bool = False,
+    limit: int = 50,
+    auth: bool = Depends(verify_api_key)
+):
+    """List notifications for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    notifications = get_notifications(user_address, unread_only, limit)
+    return {"notifications": notifications, "count": len(notifications)}
+
+@app.post("/api/v1/notifications/{notification_id}/read")
+@limiter.limit("60/minute")
+async def mark_notification_as_read(
+    request: Request,
+    notification_id: int,
+    auth: bool = Depends(verify_api_key)
+):
+    """Mark notification as read"""
+    success = mark_notification_read(notification_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True, "notification_id": notification_id}
+
+@app.post("/api/v1/notifications/{user_address}/read-all")
+@limiter.limit("10/minute")
+async def mark_all_read(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """Mark all notifications as read for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    count = mark_all_notifications_read(user_address)
+    return {"success": True, "marked_read": count}
+
+
+@app.get("/api/v1/execution-history/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def get_execution_history_endpoint(
+    request: Request,
+    user_address: str,
+    limit: int = 50,
+    auth: bool = Depends(verify_api_key)
+):
+    """Get execution history for user"""
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    history = get_execution_history(user_address, limit)
+    return {"history": history, "count": len(history)}
+
 
 if __name__ == "__main__":
     import uvicorn
