@@ -6,6 +6,7 @@ import {
   DollarSign, Clock, CheckCircle, AlertTriangle, Plus,
   Trash2, ExternalLink, Copy, Edit2, Save, X, Loader
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 const formatTimeLock = (seconds) => {
   if (!seconds || seconds === 0) return '0 SEC';
@@ -369,8 +370,9 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                value={vaultData ? `${parseFloat(vaultData.dailyLimit).toLocaleString()}` : '—'}
                subValue="PER 24 HOURS" color="purple" delay={0.1} 
              />
-             <StatBox 
-               icon={Shield} label="TX LIMIT" 
+            <StatBox 
+               icon={() => <img src={sentinelLogo} alt="" style={{ width: '20px', height: '20px' }} />} 
+               label="TX LIMIT" 
                value={vaultData ? `${parseFloat(vaultData.txLimit).toLocaleString()}` : '—'}
                subValue="SINGLE TX CAP" color="cyan" delay={0.2} 
              />
@@ -381,7 +383,10 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
              />
              
              <div className="security-card">
-               <div className="card-title"><Shield size={16}/> SECURITY STATUS</div>
+             <div className="card-title">
+               <img src={sentinelLogo} alt="" style={{ width: '16px', height: '16px', marginRight: '8px' }} />
+               SECURITY STATUS
+             </div>
                <div className="checklist">
                   <div className="check-item"><CheckCircle size={14} color="var(--accent-emerald)" /> REENTRANCY GUARD ACTIVE</div>
                   <div className="check-item"><CheckCircle size={14} color="var(--accent-emerald)" /> TIME LOCK ENABLED</div>
@@ -424,8 +429,8 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                     </div>
 
                     <div className="setting-row">
-                       <label>
-                          <Shield size={16} />
+                      <label>
+                          <img src={sentinelLogo} alt="" style={{ width: '16px', height: '16px', marginRight: '8px' }} />
                           <span>TRANSACTION LIMIT</span>
                        </label>
                        <div className="input-group">

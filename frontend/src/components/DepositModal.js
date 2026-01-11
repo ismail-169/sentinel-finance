@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ethers } from 'ethers';
 import { X, ArrowDownToLine, Loader, AlertCircle, Check } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 export default function DepositModal({ 
   isOpen, 
@@ -99,11 +100,16 @@ export default function DepositModal({
           </div>
 
           {success ? (
-            <div className="success-state">
-              <div className="success-icon">
-                <Check size={48} strokeWidth={3} />
-              </div>
-              <h3>DEPOSIT COMPLETE</h3>
+          <div className="success-state">
+  <div className="success-icon" style={{ border: 'none' }}>
+    <img 
+      src={sentinelLogo} 
+      alt="Success" 
+      className="site-logo" 
+      style={{ height: '64px', margin: '0 auto 24px' }} 
+    />
+  </div>
+  <h2>DEPOSIT COMPLETE</h2>
               <p>{amount} MNEE ADDED TO VAULT</p>
             </div>
           ) : (

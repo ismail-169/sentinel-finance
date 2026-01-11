@@ -6,6 +6,7 @@ import {
   ArrowUpRight, ArrowDownRight, DollarSign, Users,
   Wallet, Loader
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const StatCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, color, delay }) => (
@@ -21,8 +22,12 @@ const StatCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, color
       <div className="stat-value">{value}</div>
       {subtitle && <div className="stat-subtitle">{subtitle}</div>}
     </div>
-    <div className="stat-icon-box">
-      <Icon size={24} strokeWidth={1.5} />
+   <div className="stat-icon-box">
+      {title === "PROTOCOL SECURITY" ? (
+        <img src={sentinelLogo} alt="Logo" className="site-logo" style={{ height: '24px' }} />
+      ) : (
+        <Icon size={24} strokeWidth={1.5} />
+      )}
     </div>
     {trend && (
       <div className={`trend-badge ${trend}`}>
@@ -369,8 +374,13 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.7 }}
           >
-            <div className="rs-row">
-              <Shield size={14} /> Pending High-Risk <strong>{pendingTxs.filter(tx => (tx.riskScore || 0) > 70).length}</strong>
+           <div className="rs-row">
+              <img 
+                src={sentinelLogo} 
+                alt="" 
+                style={{ width: '14px', height: '14px', marginRight: '6px', verticalAlign: 'middle' }} 
+              /> 
+              Pending High-Risk <strong>{pendingTxs.filter(tx => (tx.riskScore || 0) > 70).length}</strong>
             </div>
             <div className="rs-row">
               <AlertTriangle size={14} /> Alerts Today <strong>0</strong>

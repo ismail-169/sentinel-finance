@@ -6,8 +6,8 @@ import {
   XCircle, Loader, DollarSign, User, Clock,
   ChevronDown, Sparkles, Terminal
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
-// AI Provider configurations
 const AI_PROVIDERS = {
   grok: {
     name: 'GROK',
@@ -32,9 +32,6 @@ const AI_PROVIDERS = {
   }
 };
 
-// No hardcoded vendors - we use trusted vendors from the database/settings
-
-// System prompt is generated dynamically with trusted vendors
 const getSystemPrompt = (trustedVendors) => {
   const vendorList = trustedVendors.length > 0
     ? trustedVendors.map(v => `- ${v.name}: ${v.address}`).join('\n')
@@ -89,7 +86,13 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
           {message.type === 'success' && <CheckCircle size={14} />}
           {message.type === 'warning' && <AlertTriangle size={14} />}
           {message.type === 'danger' && <XCircle size={14} />}
-          {message.type === 'info' && <Shield size={14} />}
+        {message.type === 'info' && (
+  <img 
+    src={sentinelLogo} 
+    alt="Sentinel" 
+    style={{ width: '14px', height: '14px', marginRight: '4px', verticalAlign: 'middle' }} 
+  />
+)}
         </div>
         <span>{message.content}</span>
       </motion.div>
@@ -157,12 +160,10 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
   const [showProviderMenu, setShowProviderMenu] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Debug: Log vendors when they change
   useEffect(() => {
     console.log('🏪 AIAgentChat received trustedVendors:', trustedVendors);
   }, [trustedVendors]);
   
-  // Initialize welcome message ONCE
   useEffect(() => {
     if (hasInitialized) return;
     
@@ -183,13 +184,11 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     }
   }, [trustedVendors, hasInitialized]);
 
-  // Get API keys from environment variables
   const getApiKey = (provider) => {
     const envKey = AI_PROVIDERS[provider].envKey;
     return process.env[envKey] || '';
   };
 
-  // Check which providers have keys configured
   const availableProviders = Object.entries(AI_PROVIDERS).filter(
     ([key]) => getApiKey(key)
   );
@@ -202,7 +201,6 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     scrollToBottom();
   }, [messages]);
 
-  // Auto-select first available provider
   useEffect(() => {
     if (!getApiKey(selectedProvider) && availableProviders.length > 0) {
       setSelectedProvider(availableProviders[0][0]);
@@ -357,7 +355,6 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     }
   };
 
-  // API Call Helpers
   const callClaude = async (userMessage, apiKey) => {
     const systemPrompt = getSystemPrompt(trustedVendors);
     const response = await fetch(AI_PROVIDERS.claude.endpoint, {
@@ -478,7 +475,7 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     <div className="ai-container">
       <div className="chat-header">
         <div className="terminal-header">
-          <Terminal size={18} />
+          <img src={sentinelLogo} alt="Logo" className="site-logo" style={{ height: '20px' }} />
           <span>SENTINEL_AI_CORE // V2.0</span>
         </div>
         

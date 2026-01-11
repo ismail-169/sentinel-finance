@@ -5,6 +5,7 @@ import {
   Shield, Wallet, Droplets, Plus, ArrowRight, Check, 
   Loader, AlertCircle, Coins, ChevronLeft, ExternalLink, Copy, Fuel
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 export default function Onboarding({ 
   account,
@@ -94,7 +95,6 @@ export default function Onboarding({
   const loadBalanceAndStatus = async () => {
     setRefreshing(true);
     try {
-      // Check if on correct chain first
       if (window.ethereum) {
         const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
         const expectedChainId = NETWORK_CONFIG[network]?.chainId;
@@ -351,8 +351,12 @@ export default function Onboarding({
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
           >
-            <div className="step-icon">
-              <Shield size={32} />
+           <div className="step-icon" style={{ border: 'none', background: 'none' }}>
+              <img 
+                src={sentinelLogo} 
+                alt="Sentinel" 
+                style={{ height: '40px', width: 'auto' }} 
+              />
             </div>
             <h2>DEPLOY VAULT</h2>
             <p>INITIALIZE YOUR PERSONAL SMART CONTRACT</p>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ethers } from 'ethers';
 import { X, ArrowUpFromLine, Loader, AlertCircle, Check } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 export default function WithdrawModal({ 
   isOpen, 
@@ -93,8 +94,8 @@ export default function WithdrawModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="modal-header">
-            <div className="header-icon">
-              <ArrowUpFromLine size={20} />
+          <div className="header-icon" style={{ border: 'none', background: 'none' }}>
+              <img src={sentinelLogo} alt="Sentinel" style={{ height: '24px', width: 'auto' }} />
             </div>
             <h2>WITHDRAW MNEE</h2>
             <button className="close-btn" onClick={handleClose}>
@@ -103,9 +104,9 @@ export default function WithdrawModal({
           </div>
 
           {success ? (
-            <div className="success-state">
-              <div className="success-icon">
-                <Check size={48} strokeWidth={3} />
+           <div className="success-state">
+              <div className="success-icon" style={{ marginBottom: '24px' }}>
+                <img src={sentinelLogo} alt="Success" style={{ height: '64px', width: 'auto' }} />
               </div>
               <h3>WITHDRAWAL COMPLETE</h3>
               <p>MNEE RETURNED TO WALLET</p>

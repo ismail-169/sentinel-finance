@@ -5,6 +5,7 @@ import {
   Filter, ChevronDown, ExternalLink, Copy, Shield,
   ArrowUpRight, MoreVertical, Ban, Eye, Loader, X
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 const RevokeModal = ({ isOpen, onClose, onConfirm, txId, isLoading }) => {
   const [reason, setReason] = useState('');
@@ -263,7 +264,12 @@ const StatusBadge = ({ status }) => {
     pending: { icon: Clock, label: 'PENDING', color: 'var(--accent-amber)', bg: 'rgba(255, 204, 0, 0.2)' },
     ready: { icon: CheckCircle, label: 'READY', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.2)' },
     revoked: { icon: XCircle, label: 'REVOKED', color: 'var(--accent-red)', bg: 'rgba(255, 59, 48, 0.2)' },
-    timelocked: { icon: Shield, label: 'LOCKED', color: 'var(--accent-blue)', bg: 'rgba(0, 102, 255, 0.2)' }
+timelocked: { 
+      icon: () => <img src={sentinelLogo} alt="" style={{ width: '14px', height: '14px' }} />, 
+      label: 'LOCKED', 
+      color: 'var(--accent-blue)', 
+      bg: 'rgba(0, 102, 255, 0.2)' 
+    }
   };
 
   const { icon: Icon, label, color, bg } = config[status] || config.pending;

@@ -5,6 +5,7 @@ import {
   RefreshCw, Eye, EyeOff, Terminal, ExternalLink,
   Shield, Bot, Webhook, AlertTriangle, XOctagon
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 const CodeBlock = ({ code, language = 'javascript' }) => {
   const [copied, setCopied] = useState(false);
@@ -186,8 +187,13 @@ curl -X GET ${apiUrl}/api/v1/vault/balance \\
   return (
     <div className="dev-panel">
       <div className="panel-header">
-        <div className="header-icon">
-          <Code size={24} />
+        <div className="header-icon" style={{ border: 'none', background: 'none' }}>
+          <img 
+            src={sentinelLogo} 
+            alt="Sentinel" 
+            className="site-logo" 
+            style={{ height: '32px', width: 'auto' }} 
+          />
         </div>
         <div>
           <h2>DEVELOPER API</h2>

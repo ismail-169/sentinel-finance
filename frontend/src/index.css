@@ -233,3 +233,21 @@ pre {
     transition-duration: 0.01ms !important;
   }
 }
+.site-logo {
+  height: 32px;    
+  width: auto;       
+  object-fit: contain; 
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .site-logo {
+    height: 28px;
+  }
+}
+
+.site-logo.spin {
+  height: 48px;
+  animation: spin 2s linear infinite;
+}

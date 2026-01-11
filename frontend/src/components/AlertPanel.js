@@ -5,6 +5,7 @@ import {
   X, Clock, Shield, ChevronRight, Filter, Search,
   ExternalLink, Eye, EyeOff, Trash2, CheckCheck, RefreshCw
 } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 const severityConfig = {
   critical: {
@@ -446,13 +447,18 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
               />
             ))
           ) : (
-            <motion.div 
-              className="empty-state"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              <Shield size={48} strokeWidth={1} />
-              <h3>ALL SYSTEMS NOMINAL</h3>
+          <motion.div 
+  className="empty-state"
+  initial={{ opacity: 0 }}
+  animate={{ opacity: 1 }}
+>
+  <img 
+    src={sentinelLogo} 
+    alt="Nominal" 
+    className="site-logo" 
+    style={{ height: '48px', marginBottom: '16px', opacity: 0.5 }} 
+  />
+  <h3>ALL SYSTEMS NOMINAL</h3>
               <p>No alerts match your current filters</p>
             </motion.div>
           )}

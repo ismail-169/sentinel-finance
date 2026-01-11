@@ -7,6 +7,7 @@ import {
   ChevronRight, ExternalLink, Bell, Settings, Moon, Bot, Code,
   LogOut, ArrowDownToLine, ArrowUpFromLine, Coins, Menu, X, Github
 } from 'lucide-react';
+import sentinelLogo from './sentinel-logo.png';
 import NetworkSelector from './components/NetworkSelector';
 import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
@@ -453,10 +454,15 @@ export default function App() {
   if (appState === 'connecting') {
     return (
       <div className="loading-screen">
-        <div className="loader-box">
-          <Activity className="spin" size={48} />
-          <p>ESTABLISHING UPLINK TO {selectedNetwork === 'sepolia' ? 'SEPOLIA' : 'MAINNET'}...</p>
-        </div>
+       <div className="loader-box">
+  <img 
+    src={sentinelLogo} 
+    className="spin" 
+    alt="Loading..." 
+    style={{ height: '48px', width: 'auto', marginBottom: '16px' }} 
+  />
+  <p>ESTABLISHING UPLINK TO {selectedNetwork === 'sepolia' ? 'SEPOLIA' : 'MAINNET'}...</p>
+</div>
         <style jsx>{`
           .loading-screen {
             min-height: 100vh;
@@ -502,10 +508,14 @@ export default function App() {
     <div className="app-container">
       <header className="header">
         <div className="header-left">
-          <div className="logo-box">
-            <Shield size={24} strokeWidth={2.5} />
-            <span className="logo-text">SENTINEL</span>
-          </div>
+       <div className="logo-box">
+  <img 
+    src={sentinelLogo} 
+    alt="Sentinel Logo" 
+    className="site-logo" 
+  />
+  <span className="logo-text">SENTINEL</span>
+</div>
           <div className={`network-tag ${selectedNetwork}`}>
             <div className="dot"></div>
             <span className="net-name">{networkName || selectedNetwork.toUpperCase()}</span>

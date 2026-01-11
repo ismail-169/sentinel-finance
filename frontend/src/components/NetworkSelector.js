@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Shield, Zap, TestTube, Coins, ArrowRight, Check } from 'lucide-react';
+import sentinelLogo from '../sentinel-logo.png';
 
 export default function NetworkSelector({ onSelectNetwork }) {
   return (
@@ -12,9 +13,14 @@ export default function NetworkSelector({ onSelectNetwork }) {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4 }}
       >
-        <div className="logo-section">
-          <div className="logo-box">
-            <Shield size={64} strokeWidth={1.5} />
+       <div className="logo-section">
+          <div className="logo-box" style={{ border: 'none', background: 'none', boxShadow: 'none' }}>
+            <img 
+              src={sentinelLogo} 
+              alt="Sentinel" 
+              className="site-logo" 
+              style={{ height: '96px', width: 'auto' }} 
+            />
           </div>
           <h1>SENTINEL FINANCE</h1>
           <div className="tagline">AI-POWERED SECURITY FOR MNEE</div>
@@ -64,8 +70,13 @@ export default function NetworkSelector({ onSelectNetwork }) {
                 <Coins size={14} />
                 <span>LIVE MODE</span>
               </div>
-              <div className="icon-box live">
-                <Shield size={32} />
+             <div className="icon-box live" style={{ border: 'none', background: 'none' }}>
+                <img 
+                  src={sentinelLogo} 
+                  alt="Live" 
+                  className="site-logo" 
+                  style={{ height: '40px' }} 
+                />
               </div>
             </div>
 
