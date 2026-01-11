@@ -6,7 +6,7 @@ import {
   XCircle, Loader, DollarSign, User, Clock,
   ChevronDown, Sparkles, Terminal, Calendar,
   Repeat, PiggyBank, Lock, Trash2, Play, Bell,
-  TrendingUp, Target, Wallet
+  TrendingUp, Target, Wallet, Zap, ArrowRight
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 
@@ -34,7 +34,8 @@ const AI_PROVIDERS = {
   }
 };
 
-const getSystemPrompt = (trustedVendors, schedules, savingsPlans) => {
+// Enhanced system prompt with Agent Wallet commands
+const getSystemPrompt = (trustedVendors, schedules, savingsPlans, hasAgentWallet, agentBalance) => {
   const vendorList = trustedVendors.length > 0
     ? trustedVendors.map(v => `- ${v.name}: ${v.address}`).join('\n')
     : '(No trusted vendors configured yet)';
@@ -47,18 +48,32 @@ const getSystemPrompt = (trustedVendors, schedules, savingsPlans) => {
     ? savingsPlans.map(s => `- ${s.name}: ${s.amount} MNEE/${s.frequency}, locked for ${s.lockDays} days`).join('\n')
     : '(No savings plans)';
 
-  return `You are SENTINEL AI, an advanced financial assistant with access to a secure cryptocurrency vault containing MNEE stablecoins. You can:
-1. Execute instant payments
-2. Schedule recurring payments
-3. Create savings plans with locked funds
+  const agentWalletInfo = hasAgentWallet 
+    ? `\n\nAGENT WALLET STATUS:\n- Connected: Yes\n- Balance: ${agentBalance} MNEE\n- Can execute automated payments without popups`
+    : '\n\nAGENT WALLET STATUS:\n- Not initialized (user needs to set up in Agent Wallet panel)';
 
-IMPORTANT RESPONSE RULES:
-1. For INSTANT PAYMENTS: {"action": "payment", "vendor": "name/address", "amount": number, "reason": "description"}
-2. For SCHEDULED PAYMENTS: {"action": "schedule", "vendor": "name/address", "amount": number, "frequency": "daily|weekly|monthly|yearly", "startDate": "YYYY-MM-DD", "reason": "description"}
-3. For SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "reason": "description"}
-4. For VIEWING SCHEDULES: {"action": "view_schedules"}
-5. For VIEWING SAVINGS: {"action": "view_savings"}
-6. For CANCELING: {"action": "cancel_schedule", "id": "schedule_id"} or {"action": "cancel_savings", "id": "savings_id"}
+  return `You are SENTINEL AI, an advanced financial assistant with access to a secure cryptocurrency vault containing MNEE stablecoins. You can:
+1. Execute instant payments (via Main Vault - requires wallet popup)
+2. Schedule recurring payments (via Agent Wallet - NO popups!)
+3. Create savings plans with locked funds
+4. Manage the Agent Wallet for automated payments
+
+PAYMENT ROUTING RULES:
+- ONE-TIME payments to UNTRUSTED vendors → Main Vault (popup required)
+- ONE-TIME payments to TRUSTED vendors → Main Vault (popup, but auto-executes)
+- RECURRING payments → Agent Wallet (no popup, fully automated)
+- SAVINGS deposits → Agent Wallet → Savings Contract (no popup)
+
+RESPONSE FORMAT - Always include JSON for actions:
+1. INSTANT PAYMENTS: {"action": "payment", "vendor": "name/address", "amount": number, "reason": "description"}
+2. SCHEDULED PAYMENTS: {"action": "schedule", "vendor": "name/address", "amount": number, "frequency": "daily|weekly|monthly|yearly", "startDate": "YYYY-MM-DD", "reason": "description"}
+3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "reason": "description"}
+4. VIEW SCHEDULES: {"action": "view_schedules"}
+5. VIEW SAVINGS: {"action": "view_savings"}
+6. CANCEL: {"action": "cancel_schedule", "id": "schedule_id"} or {"action": "cancel_savings", "id": "savings_id"}
+7. FUND AGENT WALLET: {"action": "fund_agent", "amount": number}
+8. WITHDRAW FROM AGENT: {"action": "withdraw_agent", "amount": number} (amount=0 means withdraw all)
+9. CHECK AGENT BALANCE: {"action": "agent_balance"}
 
 USER'S TRUSTED VENDORS:
 ${vendorList}
@@ -68,6 +83,7 @@ ${scheduleList}
 
 ACTIVE SAVINGS PLANS:
 ${savingsList}
+${agentWalletInfo}
 
 FREQUENCY PARSING:
 - "every week/weekly" = weekly
@@ -77,7 +93,7 @@ FREQUENCY PARSING:
 
 EXAMPLES:
 User: "Pay $50 to Amazon every month starting next week"
-Response: "I'll set up a recurring payment to Amazon!
+Response: "I'll set up a recurring payment to Amazon! This will use your Agent Wallet for automatic execution.
 {"action": "schedule", "vendor": "Amazon", "amount": 50, "frequency": "monthly", "startDate": "2026-01-18", "reason": "Monthly Amazon payment"}"
 
 User: "Save 20 MNEE every week for 1 year"
@@ -85,16 +101,17 @@ Response: "Great savings goal! I'll create a weekly savings plan locked for 365 
 {"action": "savings", "name": "Weekly Savings", "amount": 20, "frequency": "weekly", "lockDays": 365, "reason": "52-week savings challenge"}"
 
 User: "Send 100 MNEE to Netflix now"
-Response: "Processing instant payment to Netflix!
+Response: "Processing instant payment to Netflix! This will require a wallet confirmation.
 {"action": "payment", "vendor": "Netflix", "amount": 100, "reason": "Netflix payment"}"
 
-User: "Show my scheduled payments"
-Response: "{"action": "view_schedules"}"
+User: "Fund my agent wallet with 500 MNEE"
+Response: "I'll transfer 500 MNEE from your vault to your Agent Wallet for automated payments.
+{"action": "fund_agent", "amount": 500}"
 
-User: "What savings plans do I have?"
-Response: "{"action": "view_savings"}"
+User: "Check my agent wallet balance"
+Response: "{"action": "agent_balance"}"
 
-Be conversational and helpful. Always explain what you're doing.`;
+Be conversational and helpful. Explain whether payments will use the vault (popup) or agent wallet (no popup).`;
 };
 
 const MessageBubble = ({ message, isUser, isSystem }) => {
@@ -118,6 +135,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
           )}
           {message.type === 'schedule' && <Calendar size={14} />}
           {message.type === 'savings' && <PiggyBank size={14} />}
+          {message.type === 'agent' && <Bot size={14} />}
         </div>
         <span>{message.content}</span>
       </motion.div>
@@ -156,6 +174,12 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
                 <span>AMOUNT:</span>
                 <span className="mono bold">{message.payment.amount} MNEE</span>
               </div>
+              <div className="receipt-row">
+                <span>VIA:</span>
+                <span className={`route-tag ${message.payment.viaAgent ? 'agent' : 'vault'}`}>
+                  {message.payment.viaAgent ? '⚡ AGENT WALLET' : '🔐 MAIN VAULT'}
+                </span>
+              </div>
               {message.payment.riskScore !== undefined && (
                 <div className="receipt-row risk">
                   <span>RISK:</span>
@@ -173,6 +197,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
             <div className="schedule-header">
               <Repeat size={14} />
               <span>SCHEDULED PAYMENT</span>
+              <span className="via-badge">⚡ VIA AGENT</span>
             </div>
             <div className="schedule-body">
               <div className="schedule-row"><span>TO:</span><span>{message.schedule.vendor}</span></div>
@@ -195,6 +220,24 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
               <div className="savings-row"><span>DEPOSIT:</span><span>{message.savings.amount} MNEE/{message.savings.frequency}</span></div>
               <div className="savings-row"><span>LOCK PERIOD:</span><span>{message.savings.lockDays} DAYS</span></div>
               <div className="savings-row"><span>UNLOCK DATE:</span><span>{message.savings.unlockDate}</span></div>
+            </div>
+          </div>
+        )}
+
+        {message.agentWallet && (
+          <div className="agent-card">
+            <div className="agent-header">
+              <Bot size={14} />
+              <span>AGENT WALLET</span>
+            </div>
+            <div className="agent-body">
+              <div className="agent-row"><span>BALANCE:</span><span className="mono bold">{message.agentWallet.balance} MNEE</span></div>
+              {message.agentWallet.action && (
+                <div className="agent-row"><span>ACTION:</span><span>{message.agentWallet.action}</span></div>
+              )}
+              {message.agentWallet.txHash && (
+                <div className="agent-row"><span>TX:</span><span className="mono">{message.agentWallet.txHash.slice(0,10)}...</span></div>
+              )}
             </div>
           </div>
         )}
@@ -246,6 +289,9 @@ const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow }) => {
                     <span><Clock size={10} /> {schedule.frequency}</span>
                     <span><Calendar size={10} /> Next: {schedule.nextDate}</span>
                   </div>
+                  {schedule.useAgentWallet && (
+                    <div className="agent-badge">⚡ AUTO</div>
+                  )}
                 </div>
                 <div className="item-actions">
                   <button className="action-btn execute" onClick={() => onExecuteNow(schedule)} title="Execute Now">
@@ -307,7 +353,16 @@ const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow }) => {
   );
 };
 
-export default function AIAgentChat({ contract, account, onTransactionCreated, trustedVendors = [] }) {
+// Main Component - Now accepts agentManager prop
+export default function AIAgentChat({ 
+  contract, 
+  account, 
+  onTransactionCreated, 
+  trustedVendors = [],
+  agentManager = null,  // NEW: Agent wallet manager
+  provider = null,      // NEW: Ethers provider
+  onAgentWalletUpdate   // NEW: Callback when agent wallet changes
+}) {
   const [messages, setMessages] = useState([]);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [input, setInput] = useState('');
@@ -317,7 +372,19 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
   const [showSchedulePanel, setShowSchedulePanel] = useState(false);
   const [schedules, setSchedules] = useState([]);
   const [savingsPlans, setSavingsPlans] = useState([]);
+  const [agentBalance, setAgentBalance] = useState('0');
   const messagesEndRef = useRef(null);
+
+  // Load agent wallet balance
+  useEffect(() => {
+    const loadAgentBalance = async () => {
+      if (agentManager && agentManager.hasWallet() && provider) {
+        const balance = await agentManager.getBalance(provider);
+        setAgentBalance(balance);
+      }
+    };
+    loadAgentBalance();
+  }, [agentManager, provider]);
 
   // Load schedules and savings from localStorage
   useEffect(() => {
@@ -343,7 +410,6 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
         const nextDate = new Date(schedule.nextDate);
         if (nextDate <= now && !schedule.notified) {
           addSystemMessage(`⏰ SCHEDULED PAYMENT DUE: ${schedule.amount} MNEE to ${schedule.vendor}`, 'schedule');
-          // Mark as notified
           setSchedules(prev => prev.map(s => 
             s.id === schedule.id ? { ...s, notified: true } : s
           ));
@@ -377,10 +443,14 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     const vendorList = vendorNames.length > 0 
       ? `\n\nTRUSTED VENDORS:\n${vendorNames.join(', ')}${trustedVendors.length > 5 ? '...' : ''}`
       : '\n\n⚠️ NO TRUSTED VENDORS DETECTED.';
+
+    const agentStatus = agentManager && agentManager.hasWallet()
+      ? `\n\n⚡ AGENT WALLET: ACTIVE (${agentBalance} MNEE)`
+      : '\n\n💡 TIP: Set up Agent Wallet for automated payments!';
     
     setMessages([{
       id: 1,
-      content: `SENTINEL AI ONLINE.\n\nCOMMANDS:\n> "PAY $50 TO [VENDOR]" - Instant payment\n> "PAY $X TO [VENDOR] EVERY MONTH" - Recurring\n> "SAVE $X EVERY WEEK FOR Y DAYS" - Savings plan\n> "SHOW SCHEDULES" - View scheduled payments${vendorList}`,
+      content: `SENTINEL AI ONLINE.\n\nCOMMANDS:\n> "PAY $50 TO [VENDOR]" - Instant payment (vault)\n> "PAY $X TO [VENDOR] EVERY MONTH" - Recurring (agent)\n> "SAVE $X EVERY WEEK FOR Y DAYS" - Savings plan\n> "FUND AGENT WITH $X" - Load agent wallet\n> "SHOW SCHEDULES" - View scheduled payments${vendorList}${agentStatus}`,
       isUser: false,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }]);
@@ -388,10 +458,10 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     if (trustedVendors.length > 0 || hasInitialized === false) {
       setHasInitialized(true);
     }
-  }, [trustedVendors, hasInitialized]);
+  }, [trustedVendors, hasInitialized, agentManager, agentBalance]);
 
-  const getApiKey = (provider) => {
-    const envKey = AI_PROVIDERS[provider].envKey;
+  const getApiKey = (providerKey) => {
+    const envKey = AI_PROVIDERS[providerKey].envKey;
     return process.env[envKey] || '';
   };
 
@@ -480,6 +550,7 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     return next.toISOString().split('T')[0];
   };
 
+  // Create schedule - now marks for agent wallet execution
   const createSchedule = (intent) => {
     const vendor = getVendorAddress(intent.vendor);
     const startDate = intent.startDate || new Date().toISOString().split('T')[0];
@@ -494,12 +565,13 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
       nextDate: calculateNextDate(intent.frequency || 'monthly', new Date(startDate)),
       reason: intent.reason || 'Scheduled payment',
       isTrusted: vendor.isTrusted,
+      useAgentWallet: true, // NEW: Flag for agent wallet execution
       createdAt: new Date().toISOString(),
       notified: false
     };
 
     setSchedules(prev => [...prev, newSchedule]);
-    addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${newSchedule.frequency})`, 'schedule');
+    addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${newSchedule.frequency}) via Agent Wallet`, 'schedule');
     
     return {
       vendor: newSchedule.vendor,
@@ -514,7 +586,6 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     const lockDays = parseInt(intent.lockDays) || 365;
     const frequency = intent.frequency || 'weekly';
     
-    // Calculate how many deposits based on frequency and lock period
     const depositsPerPeriod = {
       'daily': lockDays,
       'weekly': Math.floor(lockDays / 7),
@@ -568,8 +639,43 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     }
   };
 
+  // Execute schedule - tries agent wallet first, falls back to vault
   const executeScheduleNow = async (schedule) => {
-    addSystemMessage(`⚡ EXECUTING SCHEDULED PAYMENT NOW...`, 'info');
+    // Try agent wallet first if available and has balance
+    if (agentManager && agentManager.hasWallet() && schedule.useAgentWallet) {
+      const balance = parseFloat(await agentManager.getBalance(provider));
+      if (balance >= schedule.amount && schedule.vendorAddress) {
+        addSystemMessage(`⚡ EXECUTING VIA AGENT WALLET (no popup)...`, 'agent');
+        try {
+          const result = await agentManager.sendMNEE(
+            provider,
+            schedule.vendorAddress,
+            schedule.amount.toString(),
+            schedule.reason
+          );
+          
+          if (result.success) {
+            addSystemMessage(`✅ PAYMENT COMPLETE - ${schedule.amount} MNEE sent to ${schedule.vendor}`, 'success');
+            setSchedules(prev => prev.map(s => 
+              s.id === schedule.id 
+                ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false }
+                : s
+            ));
+            
+            // Update agent balance
+            const newBalance = await agentManager.getBalance(provider);
+            setAgentBalance(newBalance);
+            onAgentWalletUpdate && onAgentWalletUpdate();
+            return;
+          }
+        } catch (err) {
+          addSystemMessage(`⚠️ Agent wallet failed: ${err.message}. Falling back to vault...`, 'warning');
+        }
+      }
+    }
+
+    // Fallback to vault (requires popup)
+    addSystemMessage(`⚡ EXECUTING SCHEDULED PAYMENT VIA VAULT...`, 'info');
     
     const result = await executePayment({
       vendor: schedule.vendor,
@@ -578,7 +684,6 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     });
 
     if (result && result.status !== 'blocked') {
-      // Update next date
       setSchedules(prev => prev.map(s => 
         s.id === schedule.id 
           ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false }
@@ -587,6 +692,7 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     }
   };
 
+  // Execute instant payment via vault (requires popup)
   const executePayment = async (paymentIntent) => {
     if (!contract || !account) {
       addSystemMessage('WALLET NOT CONNECTED. UNABLE TO TRANSACT.', 'danger');
@@ -604,12 +710,13 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
         riskScore: 1.0,
         status: 'blocked',
         isTrusted: false,
+        viaAgent: false,
         error: 'Vendor not found'
       };
     }
 
     try {
-      addSystemMessage(`INITIALIZING TRANSFER TO ${vendor.name}...`, 'info');
+      addSystemMessage(`INITIALIZING TRANSFER TO ${vendor.name} VIA VAULT...`, 'info');
 
       const amountWei = ethers.parseUnits(amount.toString(), 18);
       const tx = await contract.requestPayment(vendor.address, amountWei, account);
@@ -649,6 +756,7 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
             riskScore: riskScore,
             status: 'executed',
             isTrusted: true,
+            viaAgent: false,
             autoExecuted: true
           };
         } catch (execErr) {
@@ -671,7 +779,8 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
         amount: amount,
         riskScore: riskScore,
         status: riskScore > 0.7 ? 'blocked' : riskScore > 0.4 ? 'pending' : 'approved',
-        isTrusted: vendor.isTrusted
+        isTrusted: vendor.isTrusted,
+        viaAgent: false
       };
 
     } catch (err) {
@@ -680,8 +789,83 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
     }
   };
 
+  // NEW: Fund agent wallet
+  const fundAgentWallet = async (amount) => {
+    if (!agentManager) {
+      addSystemMessage(`❌ Agent wallet not initialized. Open Agent Wallet panel first.`, 'danger');
+      return null;
+    }
+    
+    if (!agentManager.hasWallet()) {
+      addSystemMessage(`❌ Agent wallet not set up. Click the bot icon in header to initialize.`, 'danger');
+      return null;
+    }
+
+    addSystemMessage(`⏳ Funding agent wallet with ${amount} MNEE requires 2 confirmations...`, 'info');
+    addSystemMessage(`💡 Use the Agent Wallet panel (bot icon) to fund your agent wallet.`, 'info');
+    
+    return {
+      balance: agentBalance,
+      action: 'FUND_REQUIRED_VIA_PANEL'
+    };
+  };
+
+  // NEW: Withdraw from agent wallet
+  const withdrawFromAgent = async (amount) => {
+    if (!agentManager || !agentManager.hasWallet()) {
+      addSystemMessage(`❌ Agent wallet not available.`, 'danger');
+      return null;
+    }
+
+    try {
+      addSystemMessage(`⏳ Withdrawing from agent wallet to vault...`, 'info');
+      
+      let result;
+      if (amount === 0 || amount >= parseFloat(agentBalance)) {
+        result = await agentManager.withdrawToVault(provider);
+      } else {
+        result = await agentManager.withdrawAmountToVault(provider, amount.toString());
+      }
+
+      if (result.success) {
+        addSystemMessage(`✅ Withdrawn ${result.amount} MNEE to vault`, 'success');
+        const newBalance = await agentManager.getBalance(provider);
+        setAgentBalance(newBalance);
+        onAgentWalletUpdate && onAgentWalletUpdate();
+        
+        return {
+          balance: newBalance,
+          action: `WITHDRAWN ${result.amount} MNEE`,
+          txHash: result.txHash
+        };
+      }
+    } catch (err) {
+      addSystemMessage(`❌ Withdrawal failed: ${err.message}`, 'danger');
+    }
+    return null;
+  };
+
+  // NEW: Check agent balance
+  const checkAgentBalance = async () => {
+    if (!agentManager || !agentManager.hasWallet()) {
+      return {
+        balance: '0',
+        action: 'NOT_INITIALIZED'
+      };
+    }
+
+    const balance = await agentManager.getBalance(provider);
+    setAgentBalance(balance);
+    
+    return {
+      balance: balance,
+      action: 'BALANCE_CHECKED'
+    };
+  };
+
   const callClaude = async (userMessage, apiKey) => {
-    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans);
+    const hasAgent = agentManager && agentManager.hasWallet();
+    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance);
     const response = await fetch(AI_PROVIDERS.claude.endpoint, {
       method: 'POST',
       headers: {
@@ -703,7 +887,8 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
   };
 
   const callGrok = async (userMessage, apiKey) => {
-    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans);
+    const hasAgent = agentManager && agentManager.hasWallet();
+    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance);
     try {
       const response = await fetch(AI_PROVIDERS.grok.endpoint, {
         method: 'POST',
@@ -726,7 +911,8 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
   };
 
   const callOpenAI = async (userMessage, apiKey) => {
-    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans);
+    const hasAgent = agentManager && agentManager.hasWallet();
+    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance);
     const response = await fetch(AI_PROVIDERS.openai.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -828,6 +1014,31 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
             addMessage(cleanResponse || 'Savings plan cancelled.', false, { provider: AI_PROVIDERS[selectedProvider].name });
             break;
 
+          // NEW: Agent wallet actions
+          case 'fund_agent':
+            const fundResult = await fundAgentWallet(parseFloat(intent.amount));
+            addMessage(cleanResponse || 'Check the Agent Wallet panel to fund.', false, { 
+              provider: AI_PROVIDERS[selectedProvider].name,
+              agentWallet: fundResult
+            });
+            break;
+
+          case 'withdraw_agent':
+            const withdrawResult = await withdrawFromAgent(parseFloat(intent.amount) || 0);
+            addMessage(cleanResponse || 'Withdrawal processed.', false, { 
+              provider: AI_PROVIDERS[selectedProvider].name,
+              agentWallet: withdrawResult
+            });
+            break;
+
+          case 'agent_balance':
+            const balanceResult = await checkAgentBalance();
+            addMessage(`Your Agent Wallet balance is ${balanceResult.balance} MNEE.`, false, { 
+              provider: AI_PROVIDERS[selectedProvider].name,
+              agentWallet: balanceResult
+            });
+            break;
+
           default:
             addMessage(cleanResponse || aiResponse, false, { provider: AI_PROVIDERS[selectedProvider].name });
         }
@@ -843,6 +1054,7 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
 
   const currentProvider = AI_PROVIDERS[selectedProvider];
   const hasSchedules = schedules.length > 0 || savingsPlans.length > 0;
+  const hasAgentWallet = agentManager && agentManager.hasWallet();
 
   return (
     <div className="ai-wrapper">
@@ -850,7 +1062,12 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
         <div className="chat-header">
           <div className="terminal-header">
             <img src={sentinelLogo} alt="Logo" className="site-logo" style={{ height: '20px' }} />
-            <span>SENTINEL_AI_CORE // V2.1</span>
+            <span>SENTINEL_AI_CORE // V2.2</span>
+            {hasAgentWallet && (
+              <span className="agent-indicator">
+                <Bot size={12} /> {parseFloat(agentBalance).toFixed(0)} MNEE
+              </span>
+            )}
           </div>
           
           <div className="header-actions">
@@ -873,11 +1090,11 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
               <AnimatePresence>
                 {showProviderMenu && (
                   <motion.div className="menu-dropdown" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                    {Object.entries(AI_PROVIDERS).map(([key, provider]) => {
+                    {Object.entries(AI_PROVIDERS).map(([key, prov]) => {
                       const hasKey = getApiKey(key);
                       return (
                         <button key={key} className={`menu-item ${!hasKey ? 'disabled' : ''}`} onClick={() => { if (hasKey) { setSelectedProvider(key); setShowProviderMenu(false); } }}>
-                          {provider.icon} {provider.name}
+                          {prov.icon} {prov.name}
                         </button>
                       );
                     })}
@@ -934,390 +1151,108 @@ export default function AIAgentChat({ contract, account, onTransactionCreated, t
       </AnimatePresence>
 
       <style jsx>{`
-        .ai-wrapper {
-          display: flex;
-          gap: 16px;
-          height: calc(100vh - 180px);
-          min-height: 500px;
-        }
-
-        .ai-container {
-          display: flex; flex-direction: column; flex: 1;
-          border: 2px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a);
-          transition: all 0.3s ease;
-        }
-
-        .ai-container.with-panel {
-          flex: 1;
-        }
-
-        .chat-header {
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 12px 20px; border-bottom: 2px solid var(--border-color, #ffcc00); background: var(--bg-secondary, #252525);
-        }
-        .terminal-header { display: flex; align-items: center; gap: 8px; font-family: var(--font-pixel); font-size: 12px; color: var(--text-primary, #ffcc00); }
-        
+        .ai-wrapper { display: flex; gap: 16px; height: calc(100vh - 180px); min-height: 500px; }
+        .ai-container { display: flex; flex-direction: column; flex: 1; border: 2px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a); transition: all 0.3s ease; }
+        .ai-container.with-panel { flex: 1; }
+        .chat-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 2px solid var(--border-color, #ffcc00); background: var(--bg-secondary, #252525); flex-wrap: wrap; gap: 12px; }
+        .terminal-header { display: flex; align-items: center; gap: 10px; font-family: var(--font-pixel); font-size: 11px; color: var(--text-primary, #ffcc00); }
+        .agent-indicator { display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: rgba(96, 165, 250, 0.2); color: #60a5fa; font-size: 10px; margin-left: 8px; }
         .header-actions { display: flex; align-items: center; gap: 12px; }
-        
-        .schedule-toggle {
-          position: relative;
-          padding: 8px;
-          background: var(--bg-card, #2a2a2a);
-          border: 2px solid var(--border-color, #ffcc00);
-          color: var(--text-primary, #ffcc00);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .schedule-toggle:hover { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
-        .schedule-toggle .badge {
-          position: absolute;
-          top: -6px;
-          right: -6px;
-          background: var(--accent-red);
-          color: white;
-          font-size: 10px;
-          padding: 2px 6px;
-          border-radius: 10px;
-          font-family: var(--font-mono);
-        }
-
+        .schedule-toggle { position: relative; padding: 8px 12px; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); color: var(--text-primary, #ffcc00); cursor: pointer; transition: all 0.2s; }
+        .schedule-toggle:hover { background: var(--bg-secondary, #252525); }
+        .schedule-toggle.has-items { border-color: #60a5fa; color: #60a5fa; }
+        .schedule-toggle .badge { position: absolute; top: -6px; right: -6px; background: #60a5fa; color: white; font-size: 10px; padding: 2px 6px; font-family: var(--font-mono); }
         .model-selector { position: relative; }
-        .select-btn {
-          display: flex; align-items: center; gap: 8px; padding: 6px 12px;
-          background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); font-family: var(--font-mono); font-size: 12px; font-weight: 700;
-          cursor: pointer; transition: all 0.1s; color: var(--text-primary, #ffcc00);
-        }
-        .select-btn:hover { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
-        .icon { font-size: 14px; }
-        
-        .menu-dropdown {
-          position: absolute; top: 100%; right: 0; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00);
-          min-width: 140px; z-index: 10; margin-top: 4px;
-        }
-        .menu-item {
-          display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; background: none; border: none;
-          font-family: var(--font-mono); font-size: 12px; cursor: pointer; color: var(--text-primary, #ffcc00);
-        }
-        .menu-item:hover:not(.disabled) { background: var(--bg-secondary, #252525); }
+        .select-btn { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); color: var(--text-primary, #ffcc00); font-family: var(--font-pixel); font-size: 12px; cursor: pointer; }
+        .select-btn:hover { background: var(--bg-secondary, #252525); }
+        .select-btn .icon { font-size: 14px; }
+        .menu-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); z-index: 100; min-width: 140px; }
+        .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; background: none; border: none; color: var(--text-primary, #ffcc00); font-family: var(--font-pixel); font-size: 12px; cursor: pointer; text-align: left; }
+        .menu-item:hover { background: var(--bg-secondary, #252525); }
         .menu-item.disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .message-area {
-          flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px;
-          background: var(--bg-primary, #1a1a1a);
-        }
-
-        .message-bubble { max-width: 85%; padding: 12px 16px; }
-        .message-bubble.user { 
-          align-self: flex-end; 
-          background: var(--text-primary, #ffcc00); 
-          color: var(--bg-primary, #1a1a1a);
-          border: none;
-        }
-        .message-bubble.agent { 
-          align-self: flex-start; 
-          background: var(--bg-card, #2a2a2a); 
-          border: 2px solid var(--border-color, #ffcc00);
-          color: var(--text-primary, #ffcc00);
-        }
-        
-        .bubble-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 10px; font-weight: 700; }
-        .message-bubble.user .bubble-header { color: var(--bg-primary, #1a1a1a); opacity: 0.7; }
-        .message-bubble.agent .bubble-header { color: var(--text-muted, #b38f00); }
-        
-        .message-text { 
-          font-size: 13px; 
-          line-height: 1.5; 
-          white-space: pre-wrap; 
-        }
-        .message-bubble.user .message-text { color: var(--bg-primary, #1a1a1a); }
-        .message-bubble.agent .message-text { color: var(--text-primary, #ffcc00); }
-
-        .system-message {
-          display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 11px; font-weight: 700;
-          font-family: var(--font-mono); border: 1px solid transparent; background: transparent;
-        }
-        .system-message.info { color: var(--text-primary, #ffcc00); border-color: var(--border-color, #ffcc00); background: rgba(255, 204, 0, 0.1); }
-        .system-message.success { color: var(--accent-emerald); border-color: var(--accent-emerald); background: rgba(16, 185, 129, 0.1); }
-        .system-message.warning { color: var(--accent-amber); border-color: var(--accent-amber); background: rgba(245, 158, 11, 0.1); }
-        .system-message.danger { color: var(--accent-red); border-color: var(--accent-red); background: rgba(239, 68, 68, 0.1); }
-        .system-message.schedule { color: #60a5fa; border-color: #60a5fa; background: rgba(96, 165, 250, 0.1); }
-        .system-message.savings { color: #a855f7; border-color: #a855f7; background: rgba(168, 85, 247, 0.1); }
-
-        .payment-receipt {
-          margin-top: 12px; padding: 12px; background: var(--bg-secondary, #252525); border: 2px solid var(--border-color, #ffcc00);
-        }
-        .receipt-header {
-          display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px;
-          border-bottom: 1px solid var(--border-color, #ffcc00); font-size: 11px; font-weight: 700; color: var(--text-primary, #ffcc00);
-        }
+        .message-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: var(--bg-primary, #1a1a1a); }
+        .system-message { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; background: var(--bg-secondary, #252525); border-left: 3px solid var(--text-primary, #ffcc00); }
+        .system-message.success { border-color: var(--accent-emerald); color: var(--accent-emerald); }
+        .system-message.warning { border-color: var(--accent-amber, #ffcc00); color: var(--accent-amber, #ffcc00); }
+        .system-message.danger { border-color: var(--accent-red); color: var(--accent-red); }
+        .system-message.info { border-color: #60a5fa; color: #60a5fa; }
+        .system-message.schedule { border-color: #60a5fa; color: #60a5fa; }
+        .system-message.savings { border-color: #a855f7; color: #a855f7; }
+        .system-message.agent { border-color: #60a5fa; color: #60a5fa; }
+        .sys-icon { display: flex; }
+        .message-bubble { max-width: 85%; padding: 12px 16px; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); }
+        .message-bubble.user { align-self: flex-end; border-color: #60a5fa; }
+        .message-bubble.agent { align-self: flex-start; }
+        .bubble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-color, #ffcc00); }
+        .message-bubble.user .bubble-header { border-color: #60a5fa; }
+        .sender { font-family: var(--font-pixel); font-size: 10px; color: var(--text-primary, #ffcc00); }
+        .message-bubble.user .sender { color: #60a5fa; }
+        .timestamp { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted, #b38f00); }
+        .message-text { font-family: var(--font-mono); font-size: 13px; line-height: 1.5; color: var(--text-secondary, #e6b800); white-space: pre-wrap; }
+        .payment-receipt, .schedule-card, .savings-card, .agent-card { margin-top: 12px; background: var(--bg-secondary, #252525); border: 1px solid var(--border-color, #ffcc00); padding: 10px; }
+        .receipt-header, .schedule-header, .savings-header, .agent-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed var(--border-color, #ffcc00); font-family: var(--font-pixel); font-size: 10px; color: var(--text-primary, #ffcc00); }
         .status-tag { margin-left: auto; padding: 2px 8px; font-size: 9px; }
         .status-tag.executed, .status-tag.approved { background: var(--accent-emerald); color: white; }
-        .status-tag.pending { background: var(--accent-amber); color: black; }
+        .status-tag.pending { background: var(--accent-amber, #ffcc00); color: black; }
         .status-tag.blocked { background: var(--accent-red); color: white; }
-        
-        .receipt-body { display: flex; flex-direction: column; gap: 4px; }
-        .receipt-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-primary, #ffcc00); }
-        .receipt-row span:first-child { color: var(--text-muted, #b38f00); }
-        .mono { font-family: var(--font-mono); }
+        .receipt-body, .schedule-body, .savings-body, .agent-body { display: flex; flex-direction: column; gap: 6px; }
+        .receipt-row, .schedule-row, .savings-row, .agent-row { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted, #b38f00); }
+        .mono { font-family: var(--font-mono); color: var(--text-secondary, #e6b800); }
         .bold { font-weight: 700; }
-        .risk-val.high { color: var(--accent-red); }
-        .risk-val.med { color: var(--accent-amber); }
         .risk-val.low { color: var(--accent-emerald); }
-
-        .schedule-card, .savings-card {
-          margin-top: 12px; padding: 12px; background: var(--bg-secondary, #252525); border: 2px solid #60a5fa;
-        }
+        .risk-val.med { color: var(--accent-amber, #ffcc00); }
+        .risk-val.high { color: var(--accent-red); }
+        .route-tag { padding: 2px 6px; font-size: 10px; font-family: var(--font-pixel); }
+        .route-tag.agent { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+        .route-tag.vault { background: rgba(255, 204, 0, 0.2); color: var(--text-primary, #ffcc00); }
+        .via-badge { margin-left: auto; padding: 2px 6px; background: rgba(96, 165, 250, 0.2); color: #60a5fa; font-size: 9px; }
+        .schedule-card { border-color: #60a5fa; }
+        .schedule-header { color: #60a5fa; border-color: #60a5fa; }
         .savings-card { border-color: #a855f7; }
-        
-        .schedule-header, .savings-header {
-          display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px;
-          border-bottom: 1px solid #60a5fa; font-size: 11px; font-weight: 700; color: #60a5fa;
-        }
-        .savings-header { border-color: #a855f7; color: #a855f7; }
-        
-        .schedule-body, .savings-body { display: flex; flex-direction: column; gap: 4px; }
-        .schedule-row, .savings-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-primary, #ffcc00); }
-        .schedule-row span:first-child, .savings-row span:first-child { color: var(--text-muted, #b38f00); }
-
-        .provider-tag { margin-top: 8px; font-size: 9px; color: var(--text-muted, #b38f00); text-align: right; }
-
-        .input-controls {
-          display: flex; padding: 16px; border-top: 2px solid var(--border-color, #ffcc00); background: var(--bg-secondary, #252525);
-        }
-        .input-controls input {
-          flex: 1; padding: 14px 16px; background: var(--bg-primary, #1a1a1a); border: 2px solid var(--border-color, #ffcc00);
-          font-family: var(--font-mono); font-size: 13px; color: var(--text-primary, #ffcc00);
-        }
+        .savings-header { color: #a855f7; border-color: #a855f7; }
+        .agent-card { border-color: #60a5fa; }
+        .agent-header { color: #60a5fa; border-color: #60a5fa; }
+        .provider-tag { margin-top: 10px; font-family: var(--font-mono); font-size: 9px; color: var(--text-muted, #b38f00); text-align: right; }
+        .input-controls { display: flex; padding: 16px; border-top: 2px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a); }
+        .input-controls input { flex: 1; padding: 14px 16px; background: var(--bg-primary, #1a1a1a); border: 2px solid var(--border-color, #ffcc00); color: var(--text-primary, #ffcc00); font-family: var(--font-mono); font-size: 14px; }
         .input-controls input::placeholder { color: var(--text-muted, #b38f00); }
-        .input-controls button {
-          padding: 14px 20px; background: var(--text-primary, #ffcc00); color: var(--bg-primary, #1a1a1a);
-          border: 2px solid var(--text-primary, #ffcc00); border-left: none; cursor: pointer; font-weight: 700;
-        }
+        .input-controls input:focus { outline: none; border-color: #60a5fa; }
+        .input-controls button { padding: 14px 20px; background: var(--text-primary, #ffcc00); color: var(--bg-primary, #1a1a1a); border: 2px solid var(--text-primary, #ffcc00); border-left: none; cursor: pointer; font-weight: 700; }
         .input-controls button:hover:not(:disabled) { background: var(--accent-emerald); border-color: var(--accent-emerald); color: white; }
         .input-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
-
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-        /* Schedule Panel Styles */
-        .panel-wrapper {
-          overflow: hidden;
-        }
-
-        .schedule-panel {
-          width: 320px;
-          height: 100%;
-          background: var(--bg-card, #2a2a2a);
-          border: 2px solid var(--border-color, #ffcc00);
-          display: flex;
-          flex-direction: column;
-        }
-
-        .panel-tabs {
-          display: flex;
-          border-bottom: 2px solid var(--border-color, #ffcc00);
-        }
-
-        .panel-tab {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          padding: 12px;
-          background: var(--bg-secondary, #252525);
-          border: none;
-          color: var(--text-muted, #b38f00);
-          font-family: var(--font-pixel);
-          font-size: 10px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .panel-tab.active {
-          background: var(--bg-card, #2a2a2a);
-          color: var(--text-primary, #ffcc00);
-        }
-
-        .panel-tab:hover:not(.active) {
-          color: var(--text-primary, #ffcc00);
-        }
-
-        .panel-content {
-          flex: 1;
-          overflow-y: auto;
-          padding: 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 40px 20px;
-          color: var(--text-muted, #b38f00);
-          text-align: center;
-        }
-
-        .empty-state p {
-          font-family: var(--font-pixel);
-          font-size: 12px;
-          color: var(--text-primary, #ffcc00);
-        }
-
-        .empty-state span {
-          font-size: 11px;
-        }
-
-        .schedule-item, .savings-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 10px;
-          padding: 12px;
-          background: var(--bg-secondary, #252525);
-          border: 1px solid var(--border-color, #ffcc00);
-        }
-
-        .item-icon {
-          padding: 8px;
-          background: rgba(96, 165, 250, 0.2);
-          color: #60a5fa;
-        }
-
-        .item-icon.locked {
-          background: rgba(168, 85, 247, 0.2);
-          color: #a855f7;
-        }
-
-        .item-details {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .item-title {
-          font-family: var(--font-mono);
-          font-size: 12px;
-          font-weight: 700;
-          color: var(--text-primary, #ffcc00);
-          margin-bottom: 4px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .item-meta {
-          display: flex;
-          gap: 12px;
-          font-size: 10px;
-          color: var(--text-muted, #b38f00);
-        }
-
-        .item-meta span {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .savings-progress {
-          margin: 6px 0;
-        }
-
-        .progress-bar {
-          height: 6px;
-          background: var(--bg-primary, #1a1a1a);
-          border: 1px solid var(--border-color, #ffcc00);
-          margin-bottom: 4px;
-        }
-
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #a855f7, #60a5fa);
-          transition: width 0.3s ease;
-        }
-
-        .savings-progress span {
-          font-size: 10px;
-          color: var(--text-muted, #b38f00);
-        }
-
-        .item-actions {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .action-btn {
-          padding: 6px;
-          background: var(--bg-card, #2a2a2a);
-          border: 1px solid var(--border-color, #ffcc00);
-          color: var(--text-primary, #ffcc00);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .action-btn.execute:hover {
-          background: var(--accent-emerald);
-          border-color: var(--accent-emerald);
-          color: white;
-        }
-
-        .action-btn.cancel:hover {
-          background: var(--accent-red);
-          border-color: var(--accent-red);
-          color: white;
-        }
-
-        .action-btn.withdraw:hover {
-          background: #a855f7;
-          border-color: #a855f7;
-          color: white;
-        }
-
-        .locked-badge {
-          padding: 4px 8px;
-          background: rgba(168, 85, 247, 0.2);
-          color: #a855f7;
-          font-size: 9px;
-          font-family: var(--font-pixel);
-        }
-
-        @media (max-width: 1024px) {
-          .ai-wrapper {
-            flex-direction: column;
-          }
-          
-          .panel-wrapper {
-            width: 100% !important;
-            height: 300px;
-          }
-          
-          .schedule-panel {
-            width: 100%;
-          }
-        }
-
-        @media (max-width: 768px) {
-          .ai-wrapper { height: calc(100vh - 140px); min-height: 400px; }
-          .chat-header { padding: 10px 14px; flex-wrap: wrap; gap: 10px; }
-          .terminal-header { font-size: 10px; }
-          .select-btn { padding: 6px 10px; font-size: 11px; }
-          .message-area { padding: 14px; }
-          .message-bubble { max-width: 92%; padding: 10px 12px; }
-          .message-text { font-size: 12px; }
-          .input-controls { padding: 12px; }
-          .input-controls input { padding: 12px; font-size: 14px; }
-          .input-controls button { padding: 12px 16px; }
-        }
-
-        @media (max-width: 480px) {
-          .header-actions { gap: 8px; }
-          .schedule-toggle { padding: 6px; }
-          .terminal-header span { display: none; }
-        }
+        .panel-wrapper { overflow: hidden; }
+        .schedule-panel { width: 320px; height: 100%; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); display: flex; flex-direction: column; }
+        .panel-tabs { display: flex; border-bottom: 2px solid var(--border-color, #ffcc00); }
+        .panel-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px; background: var(--bg-secondary, #252525); border: none; color: var(--text-muted, #b38f00); font-family: var(--font-pixel); font-size: 10px; cursor: pointer; transition: all 0.2s; }
+        .panel-tab.active { background: var(--bg-card, #2a2a2a); color: var(--text-primary, #ffcc00); }
+        .panel-tab:hover:not(.active) { color: var(--text-primary, #ffcc00); }
+        .panel-content { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 40px 20px; color: var(--text-muted, #b38f00); text-align: center; }
+        .empty-state p { font-family: var(--font-pixel); font-size: 12px; color: var(--text-primary, #ffcc00); }
+        .empty-state span { font-size: 11px; }
+        .schedule-item, .savings-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px; background: var(--bg-secondary, #252525); border: 1px solid var(--border-color, #ffcc00); }
+        .item-icon { padding: 8px; background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+        .item-icon.locked { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+        .item-details { flex: 1; min-width: 0; }
+        .item-title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-primary, #ffcc00); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .item-meta { display: flex; gap: 12px; font-size: 10px; color: var(--text-muted, #b38f00); }
+        .item-meta span { display: flex; align-items: center; gap: 4px; }
+        .agent-badge { font-size: 9px; padding: 2px 6px; background: rgba(96, 165, 250, 0.2); color: #60a5fa; margin-top: 4px; display: inline-block; }
+        .savings-progress { margin: 6px 0; }
+        .progress-bar { height: 6px; background: var(--bg-primary, #1a1a1a); border: 1px solid var(--border-color, #ffcc00); margin-bottom: 4px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #a855f7, #60a5fa); transition: width 0.3s ease; }
+        .savings-progress span { font-size: 10px; color: var(--text-muted, #b38f00); }
+        .item-actions { display: flex; flex-direction: column; gap: 4px; }
+        .action-btn { padding: 6px; background: var(--bg-card, #2a2a2a); border: 1px solid var(--border-color, #ffcc00); color: var(--text-primary, #ffcc00); cursor: pointer; transition: all 0.2s; }
+        .action-btn.execute:hover { background: var(--accent-emerald); border-color: var(--accent-emerald); color: white; }
+        .action-btn.cancel:hover { background: var(--accent-red); border-color: var(--accent-red); color: white; }
+        .action-btn.withdraw:hover { background: #a855f7; border-color: #a855f7; color: white; }
+        .locked-badge { padding: 4px 8px; background: rgba(168, 85, 247, 0.2); color: #a855f7; font-size: 9px; font-family: var(--font-pixel); }
+        @media (max-width: 1024px) { .ai-wrapper { flex-direction: column; } .panel-wrapper { width: 100% !important; height: 300px; } .schedule-panel { width: 100%; } }
+        @media (max-width: 768px) { .ai-wrapper { height: calc(100vh - 140px); min-height: 400px; } .chat-header { padding: 10px 14px; flex-wrap: wrap; gap: 10px; } .terminal-header { font-size: 10px; } .select-btn { padding: 6px 10px; font-size: 11px; } .message-area { padding: 14px; } .message-bubble { max-width: 92%; padding: 10px 12px; } .message-text { font-size: 12px; } .input-controls { padding: 12px; } .input-controls input { padding: 12px; font-size: 14px; } .input-controls button { padding: 12px 16px; } }
+        @media (max-width: 480px) { .header-actions { gap: 8px; } .schedule-toggle { padding: 6px; } .terminal-header span { display: none; } .agent-indicator { display: none; } }
       `}</style>
     </div>
   );

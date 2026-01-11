@@ -442,7 +442,7 @@ export default function App() {
     }
   }, [appState, vault, checkApiHealth, loadVaultData]);
 
-  useEffect(() => {
+ useEffect(() => {
     if (window.ethereum) {
       window.ethereum.on('accountsChanged', (accounts) => {
         if (accounts.length === 0) {
@@ -456,42 +456,46 @@ export default function App() {
         window.location.reload();
       });
     }
-    useEffect(() => {
-  if (account && vaultAddress && selectedNetwork) {
-    const networkConfig = NETWORKS[selectedNetwork];
-    const manager = new AgentWalletManager(account, vaultAddress, networkConfig);
-    setAgentManager(manager);
-    
-    // Check if wallet exists
-    if (manager.hasWallet()) {
-      setAgentWalletAddress(manager.getAddress());
-      loadAgentBalance(manager);
-    }
-    
-    // Initialize scheduler
-    const sched = new RecurringScheduler(account, API_URL);
-    sched.load();
-    setScheduler(sched);
-  }
-}, [account, vaultAddress, selectedNetwork]);
-
-// Load agent balance function
-const loadAgentBalance = async (manager) => {
-  if (manager && provider) {
-    const balance = await manager.getBalance(provider);
-    setAgentBalance(balance);
-  }
-};
-
-// Refresh agent data
-const refreshAgentData = async () => {
-  if (agentManager) {
-    await loadAgentBalance(agentManager);
-  }
-  loadVaultData();
-  loadWalletBalance();
-};
   }, []);
+
+  useEffect(() => {
+    if (account && vaultAddress && selectedNetwork) {
+      const networkConfig = NETWORKS[selectedNetwork];
+      const manager = new AgentWalletManager(account, vaultAddress, networkConfig);
+      setAgentManager(manager);
+      
+           if (manager.hasWallet()) {
+        setAgentWalletAddress(manager.getAddress());
+      
+        if (provider) {
+          manager.getBalance(provider).then(balance => {
+            setAgentBalance(balance);
+          });
+        }
+      }
+      
+           const sched = new RecurringScheduler(account, API_URL);
+      sched.load();
+      setScheduler(sched);
+    }
+  }, [account, vaultAddress, selectedNetwork, provider]);
+
+  // Load agent balance function
+  const loadAgentBalance = async (manager) => {
+    if (manager && provider) {
+      const balance = await manager.getBalance(provider);
+      setAgentBalance(balance);
+    }
+  };
+
+  // Refresh agent data
+  const refreshAgentData = async () => {
+    if (agentManager) {
+      await loadAgentBalance(agentManager);
+    }
+    loadVaultData();
+    loadWalletBalance();
+  };
 
   if (appState === 'network-select') {
     return <NetworkSelector onSelectNetwork={handleNetworkSelect} />;
@@ -706,12 +710,18 @@ const refreshAgentData = async () => {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-              <AIAgentChat 
-                contract={vault}
-                account={account}
-                onTransactionCreated={loadVaultData}
-                trustedVendors={vendors}
-              />
+            <AIAgentChat 
+  contract={vault}
+  account={account}
+  onTransactionCreated={loadVaultData}
+  trustedVendors={vendors}
+  agentManager={agentManager}
+  scheduler={scheduler}
+  provider={provider}
+  networkConfig={NETWORKS[selectedNetwork]}
+  vaultAddress={vaultAddress}
+  onAgentWalletUpdate={refreshAgentData}
+/>
             </motion.div>
           )}
 
@@ -766,15 +776,16 @@ const refreshAgentData = async () => {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-              <VaultStats 
-                vaultData={vaultData}
-                vendors={vendors}
-                contract={vault}
-                onRefresh={loadVaultData}
-                onSaveVendor={saveVendorToStorage}
-                onRemoveVendor={removeVendorFromStorage}
-                account={account}
-              />
+            <VaultStats 
+  vaultData={vaultData}
+  vendors={vendors}
+  contract={vault}
+  onRefresh={loadVaultData}
+  onSaveVendor={saveVendorToStorage}
+  onRemoveVendor={removeVendorFromStorage}
+  account={account}
+  scheduler={scheduler}
+/>
             </motion.div>
           )}
         </AnimatePresence>
