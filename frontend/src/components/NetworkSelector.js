@@ -81,7 +81,7 @@ export default function NetworkSelector({ onSelectNetwork }) {
             </div>
 
             <div className="card-body">
-              <h2>USE REAL MNEE</h2>
+              <h2>MAINNET $MNEE</h2>
               <p>PROTECT REAL ASSETS WITH SENTINEL SECURITY</p>
               
               <ul className="feature-list">

@@ -32,14 +32,14 @@ export default function Onboarding({
       chainId: '0xaa36a7',
       chainIdDecimal: 11155111,
       name: 'Sepolia',
-      rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/demo',
+      rpcUrl: 'https://sepolia.drpc.org',
       explorer: 'https://sepolia.etherscan.io'
     },
     mainnet: {
       chainId: '0x1',
       chainIdDecimal: 1,
       name: 'Mainnet',
-      rpcUrl: 'https://eth-mainnet.g.alchemy.com/v2/demo',
+      rpcUrl: 'mainnet.infura.io',
       explorer: 'https://etherscan.io'
     }
   };
