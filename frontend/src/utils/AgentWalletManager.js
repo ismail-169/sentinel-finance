@@ -213,10 +213,16 @@ class AgentWalletManager {
    * @returns {Promise<{success: boolean, txHash?: string, error?: string}>}
    */
   async sendMNEE(provider, to, amount, reason = '') {
-    // Validate destination
+  
     const validation = this.isValidDestination(to);
     if (!validation.valid) {
       return { success: false, error: validation.reason };
+    }
+
+    // Check gas
+    const gasCheck = await this.checkGasBalance(provider);
+    if (gasCheck.empty) {
+      return { success: false, error: 'No ETH for gas. Fund agent with ETH first.', needsGas: true };
     }
 
     if (!this.agentWallet) {
@@ -288,9 +294,15 @@ class AgentWalletManager {
    * @param {boolean} isRecurring - Is this a recurring plan
    * @returns {Promise<{success: boolean, planId?: number, error?: string}>}
    */
-  async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
+async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     if (!this.agentWallet) {
       return { success: false, error: 'Agent wallet not initialized' };
+    }
+
+    // Check gas
+    const gasCheck = await this.checkGasBalance(provider);
+    if (gasCheck.empty) {
+      return { success: false, error: 'No ETH for gas', needsGas: true };
     }
 
     if (!this.networkConfig.savingsContract) {
@@ -376,9 +388,15 @@ class AgentWalletManager {
    * @param {string} amount - Amount to deposit
    * @returns {Promise<{success: boolean, error?: string}>}
    */
-  async depositToSavings(provider, planId, amount) {
+ async depositToSavings(provider, planId, amount) {
     if (!this.agentWallet) {
       return { success: false, error: 'Agent wallet not initialized' };
+    }
+
+    // Check gas
+    const gasCheck = await this.checkGasBalance(provider);
+    if (gasCheck.empty) {
+      return { success: false, error: 'No ETH for gas', needsGas: true };
     }
 
     if (!this.networkConfig.savingsContract) {
@@ -582,7 +600,41 @@ class AgentWalletManager {
     const ethBalance = await this.getEthBalance(provider);
     return parseFloat(ethBalance) < minEth;
   }
+// Check gas balance with detailed status
+  async checkGasBalance(provider, minEth = 0.001) {
+    const ethBalance = await this.getEthBalance(provider);
+    const balance = parseFloat(ethBalance);
+    return {
+      balance: ethBalance,
+      sufficient: balance >= minEth,
+      low: balance > 0 && balance < minEth,
+      empty: balance < 0.0001
+    };
+  }
 
+  // Fund agent wallet with ETH from MetaMask (requires popup)
+  async fundWithEth(signer, amount) {
+    if (!this.hasWallet()) {
+      return { success: false, error: 'Agent wallet not initialized' };
+    }
+    try {
+      const amountWei = ethers.parseEther(amount.toString());
+      
+      const tx = await signer.sendTransaction({
+        to: this.getAddress(),
+        value: amountWei
+      });
+      
+      const receipt = await tx.wait();
+      return { 
+        success: true, 
+        txHash: receipt.hash,
+        amount: amount
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
   // Sign a message with agent wallet
   async signMessage(message) {
     if (!this.agentWallet) {

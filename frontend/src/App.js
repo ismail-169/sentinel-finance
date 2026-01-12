@@ -192,17 +192,14 @@ export default function App() {
 
       const browserProvider = new ethers.BrowserProvider(window.ethereum);
       
-      // If user disconnected, force wallet picker to show
       let accounts;
       if (forceNewWallet) {
         try {
-          // This forces MetaMask to show account selection dialog
           await window.ethereum.request({
             method: 'wallet_requestPermissions',
             params: [{ eth_accounts: {} }]
           });
         } catch (permErr) {
-          // User rejected or closed - go back to network select
           console.log('Permission request cancelled:', permErr);
           setForceNewWallet(false);
           setAppState('network-select');
@@ -212,7 +209,6 @@ export default function App() {
         setForceNewWallet(false);
       }
       
-      // Always request accounts after permissions
       accounts = await browserProvider.send('eth_requestAccounts', []);
       
       if (!accounts || accounts.length === 0) {
@@ -710,7 +706,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-            <AIAgentChat 
+         <AIAgentChat 
   contract={vault}
   account={account}
   onTransactionCreated={loadVaultData}
@@ -718,6 +714,7 @@ export default function App() {
   agentManager={agentManager}
   scheduler={scheduler}
   provider={provider}
+  signer={signer}
   networkConfig={NETWORKS[selectedNetwork]}
   vaultAddress={vaultAddress}
   onAgentWalletUpdate={refreshAgentData}
