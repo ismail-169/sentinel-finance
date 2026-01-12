@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "https://sentinelfinance.xyz,https://www.sentinelfinance.xyz,http://localhost:3000"
     rate_limit: str = "100/minute"
     debug: bool = False
-    savings_contract_address: str = ""
+    savings_contract_address: str = "0x21955e81ca4063f41080d12d3113F6ec54E7b692"
     mnee_token_address: str = "0x250ff89cf1518F42F3A4c927938ED73444491715"
 
     class Config:
@@ -1026,6 +1026,65 @@ async def delete_savings_plan_endpoint(
     if not success:
         raise HTTPException(status_code=404, detail="Plan not found")
     return {"success": True, "plan_id": plan_id}
+    class SavingsPlanUpdate(BaseModel):
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    execution_time: Optional[str] = None
+    next_deposit: Optional[str] = None
+    is_active: Optional[bool] = None
+
+@app.put("/api/v1/savings/plan/{plan_id}")
+@limiter.limit("30/minute")
+async def update_savings_plan_endpoint(
+    request: Request,
+    plan_id: str,
+    req: SavingsPlanUpdate,
+    auth: bool = Depends(verify_api_key)
+):
+    """Update a savings plan"""
+    try:
+        from database import update_savings_plan
+        updates = {k: v for k, v in req.dict().items() if v is not None}
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        
+        success = update_savings_plan(plan_id, updates)
+        if not success:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        
+        logger.info("savings_plan_updated", id=plan_id, updates=list(updates.keys()))
+        return {"success": True, "plan_id": plan_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("savings_plan_update_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+        @app.post("/api/v1/recurring/bulk-delete")
+@limiter.limit("10/minute")
+async def bulk_delete_recurring(
+    request: Request,
+    schedule_ids: List[str] = [],
+    plan_ids: List[str] = [],
+    auth: bool = Depends(verify_api_key)
+):
+    """Bulk delete schedules and savings plans"""
+    deleted_schedules = 0
+    deleted_plans = 0
+    
+    for sid in schedule_ids:
+        if delete_schedule(sid):
+            deleted_schedules += 1
+    
+    for pid in plan_ids:
+        if delete_savings_plan(pid):
+            deleted_plans += 1
+    
+    return {
+        "success": True,
+        "deleted_schedules": deleted_schedules,
+        "deleted_plans": deleted_plans
+    }
 
 @app.post("/api/v1/recurring/sync")
 @limiter.limit("10/minute")
@@ -1137,7 +1196,32 @@ async def get_execution_history_endpoint(
     
     history = get_execution_history(user_address, limit)
     return {"history": history, "count": len(history)}
-
+@app.get("/api/v1/recurring/health")
+async def recurring_system_health(request: Request):
+    """Check health of recurring payment system"""
+    try:
+        stats = get_stats()
+        
+        from database import get_due_schedules
+        from datetime import datetime
+        stale_threshold = datetime.utcnow()
+        due_schedules = get_due_schedules(stale_threshold)
+        
+        return {
+            "status": "healthy",
+            "active_schedules": stats.get("active_schedules", 0),
+            "active_savings": stats.get("active_savings", 0),
+            "total_locked": stats.get("total_locked_savings", 0),
+            "due_for_execution": len(due_schedules),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("health_check_failed", error=str(e))
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 if __name__ == "__main__":
     import uvicorn

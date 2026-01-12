@@ -701,8 +701,25 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
   const [savingLimits, setSavingLimits] = useState(false);
   const [limitsError, setLimitsError] = useState('');
   const [limitsSuccess, setLimitsSuccess] = useState(false);
+  const [showNewSavingsModal, setShowNewSavingsModal] = useState(false);
+  const [showNewScheduleModal, setShowNewScheduleModal] = useState(false);
+  const [newSavingsForm, setNewSavingsForm] = useState({
+    name: '',
+    amount: '',
+    frequency: 'monthly',
+    lockDays: 30
+  });
+  const [newScheduleForm, setNewScheduleForm] = useState({
+    vendor: '',
+    vendorAddress: '',
+    amount: '',
+    frequency: 'monthly',
+    executionTime: '09:00'
+  });
+  const [creatingSavings, setCreatingSavings] = useState(false);
+  const [creatingSchedule, setCreatingSchedule] = useState(false);
 
-  // Load savings plans and schedules from localStorage
+
   useEffect(() => {
     const loadAutomations = () => {
       if (account) {
@@ -771,7 +788,118 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
       localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(updated));
     }
   };
+// NEW: Create new savings plan from modal
+  const handleCreateSavingsPlan = async () => {
+    if (!newSavingsForm.name || !newSavingsForm.amount || parseFloat(newSavingsForm.amount) <= 0) {
+      return;
+    }
+    
+    setCreatingSavings(true);
+    
+    try {
+      const now = new Date();
+      const unlockDate = new Date(now.getTime() + newSavingsForm.lockDays * 24 * 60 * 60 * 1000);
+      
+      // Calculate estimated total deposits
+      let totalDeposits = 1;
+      switch(newSavingsForm.frequency) {
+        case 'daily': totalDeposits = newSavingsForm.lockDays; break;
+        case 'weekly': totalDeposits = Math.floor(newSavingsForm.lockDays / 7); break;
+        case 'biweekly': totalDeposits = Math.floor(newSavingsForm.lockDays / 14); break;
+        case 'monthly': totalDeposits = Math.floor(newSavingsForm.lockDays / 30); break;
+        default: totalDeposits = 1;
+      }
+      
+      const newPlan = {
+        id: `savings_${Date.now()}`,
+        name: newSavingsForm.name,
+        amount: parseFloat(newSavingsForm.amount),
+        frequency: newSavingsForm.frequency,
+        lockDays: newSavingsForm.lockDays,
+        executionTime: '09:00',
+        createdAt: now.toISOString(),
+        nextDeposit: now.toISOString(),
+        totalDeposited: 0,
+        targetAmount: parseFloat(newSavingsForm.amount) * totalDeposits,
+        status: 'active',
+        unlockDate: unlockDate.toISOString(),
+        withdrawn: false
+      };
+      
+      // Save to localStorage
+      const stored = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+      stored.push(newPlan);
+      localStorage.setItem(`savings_plans_${account}`, JSON.stringify(stored));
+      
+      // Update state
+      setSavingsPlans(prev => [...prev, newPlan]);
+      
+      // Reset form and close modal
+      setNewSavingsForm({ name: '', amount: '', frequency: 'monthly', lockDays: 30 });
+      setShowNewSavingsModal(false);
+      
+    } catch (error) {
+      console.error('Failed to create savings plan:', error);
+    } finally {
+      setCreatingSavings(false);
+    }
+  };
 
+  // NEW: Create new recurring schedule from modal
+  const handleCreateSchedule = async () => {
+    if (!newScheduleForm.vendor || !newScheduleForm.vendorAddress || !newScheduleForm.amount) {
+      return;
+    }
+    
+    if (!/^0x[a-fA-F0-9]{40}$/.test(newScheduleForm.vendorAddress)) {
+      alert('Invalid vendor address');
+      return;
+    }
+    
+    setCreatingSchedule(true);
+    
+    try {
+      const now = new Date();
+      let nextRun = new Date(now);
+      
+      switch(newScheduleForm.frequency) {
+        case 'daily': nextRun.setDate(nextRun.getDate() + 1); break;
+        case 'weekly': nextRun.setDate(nextRun.getDate() + 7); break;
+        case 'biweekly': nextRun.setDate(nextRun.getDate() + 14); break;
+        case 'monthly': nextRun.setMonth(nextRun.getMonth() + 1); break;
+        default: nextRun.setDate(nextRun.getDate() + 1);
+      }
+      
+      const newSchedule = {
+        id: `sched_${Date.now()}`,
+        vendor: newScheduleForm.vendor,
+        vendorAddress: newScheduleForm.vendorAddress,
+        amount: parseFloat(newScheduleForm.amount),
+        frequency: newScheduleForm.frequency,
+        executionTime: newScheduleForm.executionTime,
+        createdAt: now.toISOString(),
+        nextRun: nextRun.toISOString(),
+        paused: false,
+        executionCount: 0,
+        isTrusted: false
+      };
+      
+            const stored = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
+      stored.push(newSchedule);
+      localStorage.setItem(`schedules_${account}`, JSON.stringify(stored));
+      
+      
+      setSchedules(prev => [...prev, newSchedule]);
+      
+      setNewScheduleForm({ vendor: '', vendorAddress: '', amount: '', frequency: 'monthly', executionTime: '09:00' });
+      setShowNewScheduleModal(false);
+      
+    } catch (error) {
+      console.error('Failed to create schedule:', error);
+    } finally {
+      setCreatingSchedule(false);
+    }
+  };
   const handleAddVendor = async () => {
     if (!contract || !newVendorAddress) return;
     if (!newVendorName.trim()) {
@@ -984,10 +1112,17 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
 
             {/* Scheduled Payments */}
             <div className="recurring-group">
-              <div className="group-header">
+             <div className="group-header">
                 <Repeat size={16} />
                 <span>SCHEDULED PAYMENTS</span>
                 <span className="group-count">{schedules.length}</span>
+                <button 
+                  className="add-new-btn"
+                  onClick={() => setShowNewScheduleModal(true)}
+                >
+                  <Plus size={14} />
+                  NEW SCHEDULE
+                </button>
               </div>
               
               {schedules.length === 0 ? (
@@ -1019,6 +1154,13 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                 <PiggyBank size={16} />
                 <span>SAVINGS PLANS</span>
                 <span className="group-count">{savingsPlans.length}</span>
+                <button 
+                  className="add-new-btn"
+                  onClick={() => setShowNewSavingsModal(true)}
+                >
+                  <Plus size={14} />
+                  NEW PLAN
+                </button>
               </div>
               
               {savingsPlans.length === 0 ? (
@@ -1041,6 +1183,309 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                 </div>
               )}
             </div>
+{/* NEW: Create Savings Plan Modal */}
+            <AnimatePresence>
+              {showNewSavingsModal && (
+                <motion.div 
+                  className="modal-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowNewSavingsModal(false)}
+                >
+                  <motion.div 
+                    className="create-modal"
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="modal-header">
+                      <div className="modal-title">
+                        <PiggyBank size={20} />
+                        <h3>CREATE SAVINGS PLAN</h3>
+                      </div>
+                      <button className="close-btn" onClick={() => setShowNewSavingsModal(false)}>
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="modal-body">
+                      <div className="form-group">
+                        <label>PLAN NAME</label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Emergency Fund, Vacation..."
+                          value={newSavingsForm.name}
+                          onChange={(e) => setNewSavingsForm(prev => ({ ...prev, name: e.target.value }))}
+                        />
+                      </div>
+
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>AMOUNT (MNEE)</label>
+                          <input
+                            type="number"
+                            placeholder="0.00"
+                            min="0"
+                            step="0.01"
+                            value={newSavingsForm.amount}
+                            onChange={(e) => setNewSavingsForm(prev => ({ ...prev, amount: e.target.value }))}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>FREQUENCY</label>
+                          <select
+                            value={newSavingsForm.frequency}
+                            onChange={(e) => setNewSavingsForm(prev => ({ ...prev, frequency: e.target.value }))}
+                          >
+                            <option value="daily">DAILY</option>
+                            <option value="weekly">WEEKLY</option>
+                            <option value="biweekly">BI-WEEKLY</option>
+                            <option value="monthly">MONTHLY</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label>LOCK PERIOD</label>
+                        <select
+                          value={newSavingsForm.lockDays}
+                          onChange={(e) => setNewSavingsForm(prev => ({ ...prev, lockDays: parseInt(e.target.value) }))}
+                          className="lock-select"
+                        >
+                          <option value={7}>7 DAYS</option>
+                          <option value={14}>14 DAYS</option>
+                          <option value={30}>30 DAYS (1 MONTH)</option>
+                          <option value={60}>60 DAYS (2 MONTHS)</option>
+                          <option value={90}>90 DAYS (3 MONTHS)</option>
+                          <option value={180}>180 DAYS (6 MONTHS)</option>
+                          <option value={365}>365 DAYS (1 YEAR)</option>
+                        </select>
+                        <span className="form-hint">
+                          <Lock size={12} />
+                          Funds locked until {new Date(Date.now() + newSavingsForm.lockDays * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      <div className="plan-preview">
+                        <div className="preview-title">PLAN PREVIEW</div>
+                        <div className="preview-row">
+                          <span>Deposit Amount:</span>
+                          <strong>{newSavingsForm.amount || '0'} MNEE</strong>
+                        </div>
+                        <div className="preview-row">
+                          <span>Frequency:</span>
+                          <strong>{newSavingsForm.frequency.toUpperCase()}</strong>
+                        </div>
+                        <div className="preview-row">
+                          <span>Lock Period:</span>
+                          <strong>{newSavingsForm.lockDays} DAYS</strong>
+                        </div>
+                        <div className="preview-row highlight">
+                          <span>Est. Total (at unlock):</span>
+                          <strong>
+                            {(() => {
+                              const amt = parseFloat(newSavingsForm.amount) || 0;
+                              const days = newSavingsForm.lockDays;
+                              let deposits = 1;
+                              switch(newSavingsForm.frequency) {
+                                case 'daily': deposits = days; break;
+                                case 'weekly': deposits = Math.floor(days / 7); break;
+                                case 'biweekly': deposits = Math.floor(days / 14); break;
+                                case 'monthly': deposits = Math.floor(days / 30); break;
+                                default: deposits = 1;
+                              }
+                              return (amt * Math.max(deposits, 1)).toFixed(2);
+                            })()} MNEE
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="modal-footer">
+                      <button 
+                        className="cancel-btn"
+                        onClick={() => setShowNewSavingsModal(false)}
+                        disabled={creatingSavings}
+                      >
+                        CANCEL
+                      </button>
+                      <button 
+                        className="create-btn"
+                        onClick={handleCreateSavingsPlan}
+                        disabled={!newSavingsForm.name || !newSavingsForm.amount || creatingSavings}
+                      >
+                        {creatingSavings ? (
+                          <>
+                            <Loader size={14} className="spin" />
+                            CREATING...
+                          </>
+                        ) : (
+                          <>
+                            <PiggyBank size={14} />
+                            CREATE PLAN
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* NEW: Create Schedule Modal */}
+            <AnimatePresence>
+              {showNewScheduleModal && (
+                <motion.div 
+                  className="modal-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowNewScheduleModal(false)}
+                >
+                  <motion.div 
+                    className="create-modal"
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="modal-header">
+                      <div className="modal-title">
+                        <Repeat size={20} />
+                        <h3>CREATE RECURRING PAYMENT</h3>
+                      </div>
+                      <button className="close-btn" onClick={() => setShowNewScheduleModal(false)}>
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="modal-body">
+                      <div className="form-group">
+                        <label>VENDOR NAME</label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Netflix, Spotify, Rent..."
+                          value={newScheduleForm.vendor}
+                          onChange={(e) => setNewScheduleForm(prev => ({ ...prev, vendor: e.target.value }))}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>VENDOR WALLET ADDRESS</label>
+                        <input
+                          type="text"
+                          placeholder="0x..."
+                          value={newScheduleForm.vendorAddress}
+                          onChange={(e) => setNewScheduleForm(prev => ({ ...prev, vendorAddress: e.target.value }))}
+                        />
+                      </div>
+
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>AMOUNT (MNEE)</label>
+                          <input
+                            type="number"
+                            placeholder="0.00"
+                            min="0"
+                            step="0.01"
+                            value={newScheduleForm.amount}
+                            onChange={(e) => setNewScheduleForm(prev => ({ ...prev, amount: e.target.value }))}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>FREQUENCY</label>
+                          <select
+                            value={newScheduleForm.frequency}
+                            onChange={(e) => setNewScheduleForm(prev => ({ ...prev, frequency: e.target.value }))}
+                          >
+                            <option value="daily">DAILY</option>
+                            <option value="weekly">WEEKLY</option>
+                            <option value="biweekly">BI-WEEKLY</option>
+                            <option value="monthly">MONTHLY</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label>EXECUTION TIME (UTC)</label>
+                        <input
+                          type="time"
+                          value={newScheduleForm.executionTime}
+                          onChange={(e) => setNewScheduleForm(prev => ({ ...prev, executionTime: e.target.value }))}
+                        />
+                        <span className="form-hint">
+                          <Clock size={12} />
+                          Payment will execute at this time each {newScheduleForm.frequency.replace('ly', '')}
+                        </span>
+                      </div>
+
+                      <div className="plan-preview">
+                        <div className="preview-title">SCHEDULE PREVIEW</div>
+                        <div className="preview-row">
+                          <span>Vendor:</span>
+                          <strong>{newScheduleForm.vendor || '—'}</strong>
+                        </div>
+                        <div className="preview-row">
+                          <span>Amount:</span>
+                          <strong>{newScheduleForm.amount || '0'} MNEE</strong>
+                        </div>
+                        <div className="preview-row">
+                          <span>Frequency:</span>
+                          <strong>{newScheduleForm.frequency.toUpperCase()}</strong>
+                        </div>
+                        <div className="preview-row highlight">
+                          <span>First Payment:</span>
+                          <strong>
+                            {(() => {
+                              const now = new Date();
+                              switch(newScheduleForm.frequency) {
+                                case 'daily': now.setDate(now.getDate() + 1); break;
+                                case 'weekly': now.setDate(now.getDate() + 7); break;
+                                case 'biweekly': now.setDate(now.getDate() + 14); break;
+                                case 'monthly': now.setMonth(now.getMonth() + 1); break;
+                                default: now.setDate(now.getDate() + 1);
+                              }
+                              return now.toLocaleDateString();
+                            })()}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="modal-footer">
+                      <button 
+                        className="cancel-btn"
+                        onClick={() => setShowNewScheduleModal(false)}
+                        disabled={creatingSchedule}
+                      >
+                        CANCEL
+                      </button>
+                      <button 
+                        className="create-btn"
+                        onClick={handleCreateSchedule}
+                        disabled={!newScheduleForm.vendor || !newScheduleForm.vendorAddress || !newScheduleForm.amount || creatingSchedule}
+                      >
+                        {creatingSchedule ? (
+                          <>
+                            <Loader size={14} className="spin" />
+                            CREATING...
+                          </>
+                        ) : (
+                          <>
+                            <Repeat size={14} />
+                            CREATE SCHEDULE
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Agent Wallet Info */}
             <div className="agent-info-box">
@@ -1402,6 +1847,262 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
           .vault-header { flex-direction: column; align-items: flex-start; gap: 12px; }
           .vault-tabs { gap: 8px; }
           .vault-tabs button { padding: 8px 12px; font-size: 11px; }
+        }
+          /* CREATE MODAL STYLES */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.85);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 20px;
+        }
+
+        .create-modal {
+          background: var(--bg-card, #2a2a2a);
+          border: 3px solid var(--border-color, #ffcc00);
+          width: 100%;
+          max-width: 500px;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 8px 8px 0px 0px rgba(255, 204, 0, 0.3);
+        }
+
+        .create-modal .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 20px;
+          border-bottom: 2px solid var(--border-color, #ffcc00);
+          background: var(--bg-secondary, #252525);
+        }
+
+        .create-modal .modal-title {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: var(--text-primary, #ffcc00);
+        }
+
+        .create-modal .modal-title h3 {
+          font-family: var(--font-pixel);
+          font-size: 14px;
+          margin: 0;
+        }
+
+        .create-modal .close-btn {
+          background: transparent;
+          border: 2px solid var(--border-color, #ffcc00);
+          color: var(--text-primary, #ffcc00);
+          padding: 8px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .create-modal .close-btn:hover {
+          background: var(--accent-red);
+          border-color: var(--accent-red);
+          color: white;
+        }
+
+        .create-modal .modal-body {
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .create-modal .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .create-modal .form-group label {
+          font-family: var(--font-pixel);
+          font-size: 10px;
+          color: var(--text-muted, #b38f00);
+          letter-spacing: 1px;
+        }
+
+        .create-modal .form-group input,
+        .create-modal .form-group select {
+          padding: 12px 14px;
+          background: var(--bg-secondary, #252525);
+          border: 2px solid var(--border-color, #ffcc00);
+          color: var(--text-primary, #ffcc00);
+          font-family: var(--font-mono);
+          font-size: 14px;
+        }
+
+        .create-modal .form-group input:focus,
+        .create-modal .form-group select:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(255, 204, 0, 0.3);
+        }
+
+        .create-modal .form-group input::placeholder {
+          color: var(--text-muted, #b38f00);
+          opacity: 0.6;
+        }
+
+        .create-modal .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .create-modal .lock-select {
+          font-family: var(--font-pixel);
+          font-size: 11px;
+        }
+
+        .create-modal .form-hint {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: var(--text-muted, #b38f00);
+          margin-top: 4px;
+        }
+
+        .create-modal .plan-preview {
+          background: var(--bg-secondary, #252525);
+          border: 2px solid var(--border-color, #ffcc00);
+          padding: 16px;
+        }
+
+        .create-modal .preview-title {
+          font-family: var(--font-pixel);
+          font-size: 10px;
+          color: var(--text-muted, #b38f00);
+          margin-bottom: 12px;
+          letter-spacing: 1px;
+        }
+
+        .create-modal .preview-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 0;
+          border-bottom: 1px solid rgba(255, 204, 0, 0.2);
+          font-size: 12px;
+        }
+
+        .create-modal .preview-row:last-child {
+          border-bottom: none;
+        }
+
+        .create-modal .preview-row span {
+          color: var(--text-muted, #b38f00);
+        }
+
+        .create-modal .preview-row strong {
+          color: var(--text-primary, #ffcc00);
+          font-family: var(--font-mono);
+        }
+
+        .create-modal .preview-row.highlight {
+          background: rgba(255, 204, 0, 0.1);
+          margin: 8px -16px -16px;
+          padding: 12px 16px;
+          border-bottom: none;
+        }
+
+        .create-modal .preview-row.highlight strong {
+          color: var(--accent-emerald);
+          font-size: 14px;
+        }
+
+        .create-modal .modal-footer {
+          display: flex;
+          gap: 12px;
+          padding: 20px;
+          border-top: 2px solid var(--border-color, #ffcc00);
+          background: var(--bg-secondary, #252525);
+        }
+
+        .create-modal .cancel-btn,
+        .create-modal .create-btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 14px;
+          font-family: var(--font-pixel);
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: 2px solid var(--border-color, #ffcc00);
+        }
+
+        .create-modal .cancel-btn {
+          background: transparent;
+          color: var(--text-primary, #ffcc00);
+        }
+
+        .create-modal .cancel-btn:hover:not(:disabled) {
+          background: rgba(255, 204, 0, 0.1);
+        }
+
+        .create-modal .create-btn {
+          background: var(--border-color, #ffcc00);
+          color: var(--bg-primary, #1a1a1a);
+        }
+
+        .create-modal .create-btn:hover:not(:disabled) {
+          transform: translate(-2px, -2px);
+          box-shadow: 4px 4px 0px 0px rgba(255, 204, 0, 0.5);
+        }
+
+        .create-modal .create-btn:disabled,
+        .create-modal .cancel-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .add-new-btn {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          background: var(--border-color, #ffcc00);
+          border: 2px solid var(--border-color, #ffcc00);
+          color: var(--bg-primary, #1a1a1a);
+          font-family: var(--font-pixel);
+          font-size: 9px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .add-new-btn:hover {
+          transform: translate(-2px, -2px);
+          box-shadow: 4px 4px 0px 0px rgba(255, 204, 0, 0.5);
+        }
+
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+          .create-modal .form-row {
+            grid-template-columns: 1fr;
+          }
+          .create-modal .modal-title h3 {
+            font-size: 12px;
+          }
         }
       `}</style>
     </div>

@@ -394,6 +394,13 @@
             color: var(--text-secondary);
             margin: 0;
         }
+
+        .wallet-diagram { background: var(--bg-secondary); border: 2px solid var(--border-color); padding: 32px; margin: 24px 0; text-align: center; }
+        .wallet-box { display: inline-block; background: var(--bg-card); border: 2px solid var(--border-color); padding: 16px 24px; margin: 8px; min-width: 180px; }
+        .wallet-box.primary { border-color: var(--accent-cyan); }
+        .wallet-box.agent { border-color: var(--accent-purple); }
+        .wallet-box.savings { border-color: var(--accent-emerald); }
+        .arrow { display: inline-block; color: var(--text-muted); font-size: 24px; margin: 0 16px; }
         
         .alert {
             padding: 16px 20px;
@@ -484,9 +491,13 @@
                 <div class="sidebar-title">GETTING STARTED</div>
                 <a href="#overview" class="sidebar-link active" onclick="showSection('overview')">Overview</a>
                 <a href="#quickstart" class="sidebar-link" onclick="showSection('quickstart')">Quick Start</a>
-                <a href="#architecture" class="sidebar-link" onclick="showSection('architecture')">Architecture</a>
+             <a href="#architecture" class="sidebar-link" onclick="showSection('architecture')">Architecture</a>
             </div>
-            
+            <div class="sidebar-section">
+                <div class="sidebar-title">CORE CONCEPTS</div>
+                <a href="#three-wallet" class="sidebar-link" onclick="showSection('three-wallet')">Three-Wallet System</a>
+                <a href="#clawback" class="sidebar-link" onclick="showSection('clawback')">Clawback System</a>
+            </div>
             <div class="sidebar-section">
                 <div class="sidebar-title">SMART CONTRACTS</div>
                 <a href="#contracts" class="sidebar-link" onclick="showSection('contracts')">Contract Reference</a>
@@ -896,7 +907,39 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
                     │  (Monitor)   │     │  (ERC-20)   │
                     └──────────────┘     └─────────────┘
 </div>
-            </section>
+           </section>
+
+    <section id="three-wallet" class="content-section">
+        <h1>Three-Wallet System</h1>
+        <p class="subtitle">Secure distribution of funds across specialized contracts</p>
+        
+        <div class="wallet-diagram">
+            <div class="wallet-box primary"><strong>Main Vault</strong></div>
+            <div class="arrow">→</div>
+            <div class="wallet-box agent"><strong>Agent Wallet</strong></div>
+            <div class="arrow">←</div>
+            <div class="wallet-box savings"><strong>Savings Contract</strong></div>
+        </div>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>🚀 Main Vault</h4>
+                <p>The core storage unit where 100% of deposits are held and protected by owner-only withdrawal rights.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🤖 Agent Wallet</h4>
+                <p>Operational wallet used by AI agents to pay for API calls and micro-tasks without exposing the vault.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="clawback" class="content-section">
+        <h1>Clawback System</h1>
+        <p class="subtitle">Emergency fund recovery mechanism</p>
+        <div class="alert danger">
+            <strong>Security Feature:</strong> If an AI agent is compromised, the owner can instantly trigger a "Clawback" to pull all funds from the Agent Wallet back into the Main Vault.
+        </div>
+    </section>
             
             <section id="ai-agents" class="content-section">
                 <h1>AI Agent Integration</h1>
@@ -1013,8 +1056,12 @@ AGENT_KEY = os.environ[<span class="string">"AGENT_PRIVATE_KEY"</span>]  <span c
                 <h1>Changelog</h1>
                 <p class="subtitle">Version history</p>
                 
-                <h2>v2.0.0 (January 2026)</h2>
+             <h2>v3.0.0 (January 2026)</h2>
                 <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>🚀 Three-wallet architecture implementation</li>
+                    <li>⏪ Clawback system for emergency recovery</li>
+                    <li>💰 Savings plans with lock periods</li>
+                    <li>🤖 Multi-provider AI Chat (Claude, GPT-4, Grok)</li>
                     <li>Multi-user vault factory system</li>
                     <li>AI agent payment API</li>
                     <li>Real-time risk scoring with higher sensitivity</li>

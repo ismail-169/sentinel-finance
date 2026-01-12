@@ -508,7 +508,61 @@ def resume_schedule(schedule_id: str) -> bool:
         conn.commit()
         return cursor.rowcount > 0
 
-
+def update_schedule(schedule_id: str, updates: Dict[str, Any]) -> bool:
+    """Update specific fields of a recurring schedule"""
+    if not updates:
+        return False
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        
+        # Build dynamic UPDATE query
+        set_clauses = []
+        values = []
+        
+        allowed_fields = {
+            'vendor': 'vendor',
+            'vendor_address': 'vendor_address',
+            'amount': 'amount',
+            'frequency': 'frequency',
+            'execution_time': 'execution_time',
+            'next_execution': 'next_execution',
+            'reason': 'reason',
+            'is_trusted': 'is_trusted',
+            'is_active': 'is_active'
+        }
+        
+        for key, db_field in allowed_fields.items():
+            if key in updates:
+                value = updates[key]
+                if key in ('is_trusted', 'is_active'):
+                    value = 1 if value else 0
+                set_clauses.append(f"{db_field} = ?")
+                values.append(value)
+        
+        if not set_clauses:
+            return False
+        
+        # Always update updated_at
+        set_clauses.append("updated_at = ?")
+        values.append(now_iso)
+        
+        # Add schedule_id for WHERE clause
+        values.append(schedule_id)
+        
+        query = f"UPDATE recurring_schedules SET {', '.join(set_clauses)} WHERE id = ?"
+        cursor.execute(query, values)
+        conn.commit()
+        
+        return cursor.rowcount > 0
+        def get_schedule_by_id(schedule_id: str) -> Optional[Dict[str, Any]]:
+    """Get a single schedule by ID"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM recurring_schedules WHERE id = ?", (schedule_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 def delete_schedule(schedule_id: str) -> bool:
     """Delete a schedule"""
     with get_connection() as conn:
@@ -576,7 +630,13 @@ def save_savings_plan(plan: Dict[str, Any]) -> bool:
         
         conn.commit()
         return cursor.rowcount > 0
-
+def get_savings_plan_by_id(plan_id: str) -> Optional[Dict[str, Any]]:
+    """Get a single savings plan by ID"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM savings_plans WHERE id = ?", (plan_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
 def get_savings_plans(user_address: str, active_only: bool = False) -> List[Dict[str, Any]]:
     """Get all savings plans for user"""
@@ -630,7 +690,53 @@ def update_savings_deposit(plan_id: str, amount: float, next_deposit: Optional[s
         """, (amount, next_deposit, now_iso, now_iso, plan_id))
         conn.commit()
         return cursor.rowcount > 0
-
+def update_savings_plan(plan_id: str, updates: Dict[str, Any]) -> bool:
+    """Update specific fields of a savings plan"""
+    if not updates:
+        return False
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        
+        # Build dynamic UPDATE query
+        set_clauses = []
+        values = []
+        
+        allowed_fields = {
+            'name': 'name',
+            'amount': 'amount',
+            'frequency': 'frequency',
+            'execution_time': 'execution_time',
+            'next_deposit': 'next_deposit',
+            'is_active': 'is_active',
+            'total_saved': 'total_saved',
+            'deposits_completed': 'deposits_completed'
+        }
+        
+        for key, db_field in allowed_fields.items():
+            if key in updates:
+                value = updates[key]
+                if key == 'is_active':
+                    value = 1 if value else 0
+                set_clauses.append(f"{db_field} = ?")
+                values.append(value)
+        
+        if not set_clauses:
+            return False
+        
+        # Always update updated_at
+        set_clauses.append("updated_at = ?")
+        values.append(now_iso)
+        
+        # Add plan_id for WHERE clause
+        values.append(plan_id)
+        
+        query = f"UPDATE savings_plans SET {', '.join(set_clauses)} WHERE id = ?"
+        cursor.execute(query, values)
+        conn.commit()
+        
+        return cursor.rowcount > 0
 
 def set_plan_contract_id(plan_id: str, contract_plan_id: int) -> bool:
     """Set on-chain contract plan ID"""
@@ -1019,7 +1125,31 @@ def get_vendor_by_name(name: str, wallet_address: Optional[str] = None) -> Optio
             """, (f"%{name.lower()}%",))
         row = cursor.fetchone()
         return dict(row) if row else None
+def bulk_upsert_schedules(schedules: List[Dict[str, Any]]) -> int:
+    """Bulk upsert multiple schedules"""
+    count = 0
+    for schedule in schedules:
+        if save_recurring_schedule(schedule):
+            count += 1
+    return count
 
+
+def bulk_upsert_savings_plans(plans: List[Dict[str, Any]]) -> int:
+    """Bulk upsert multiple savings plans"""
+    count = 0
+    for plan in plans:
+        if save_savings_plan(plan):
+            count += 1
+    return count
+
+
+def get_all_user_recurring_data(user_address: str) -> Dict[str, Any]:
+    """Get all recurring data for a user in one call"""
+    return {
+        'schedules': get_recurring_schedules(user_address, active_only=False),
+        'savings_plans': get_savings_plans(user_address, active_only=False),
+        'agent_wallet': get_agent_wallet(user_address)
+    }
 
 def cleanup_expired_sessions() -> int:
     with get_connection() as conn:

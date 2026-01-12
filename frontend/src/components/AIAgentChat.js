@@ -9,7 +9,8 @@ import {
   TrendingUp, Target, Wallet, Zap, ArrowRight
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
-
+const API_URL = process.env.REACT_APP_API_URL || 'https://api.sentinelfinance.xyz';
+const API_KEY = process.env.REACT_APP_API_KEY || '';
 const AI_PROVIDERS = {
   grok: {
     name: 'GROK 4',
@@ -68,6 +69,8 @@ RESPONSE FORMAT - Always include JSON for actions:
 10. CONFIRM TOP-UP: {"action": "confirm_topup", "amount": number}
 11. DEPOSIT TO SAVINGS: {"action": "deposit_savings", "planId": number, "amount": number}
 12. FUND AGENT WITH ETH (FOR GAS): {"action": "fund_agent_eth", "amount": number}
+    - Use when user needs to add ETH for gas fees
+    - Amount is in ETH (e.g., 0.01)
 
 USER'S TRUSTED VENDORS:
 ${vendorList}
@@ -922,7 +925,180 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       action: 'BALANCE_CHECKED'
     };
   };
+  const cancelScheduleOrSavings = async (type, id) => {
+    if (type === 'schedule') {
+      setSchedules(prev => prev.filter(s => s.id !== id));
+     
+      const stored = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
+      const updated = stored.filter(s => s.id !== id);
+      localStorage.setItem(`schedules_${account}`, JSON.stringify(updated));
+      
+      try {
+        await fetch(`${API_URL}/api/v1/recurring/schedule/${id}`, {
+          method: 'DELETE',
+          headers: { 'X-API-Key': API_KEY }
+        });
+      } catch (err) {
+        console.error('Backend delete failed:', err);
+      }
+      
+      addSystemMessage(`🗑️ Schedule cancelled successfully`, 'info');
+    } else if (type === 'savings') {
+      setSavingsPlans(prev => prev.filter(p => p.id !== id));
+      const stored = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+      const updated = stored.filter(p => p.id !== id);
+      localStorage.setItem(`savings_plans_${account}`, JSON.stringify(updated));
+      
+      try {
+        await fetch(`${API_URL}/api/v1/savings/plan/${id}`, {
+          method: 'DELETE',
+          headers: { 'X-API-Key': API_KEY }
+        });
+      } catch (err) {
+        console.error('Backend delete failed:', err);
+      }
+      
+      addSystemMessage(`🗑️ Savings plan cancelled successfully`, 'info');
+    }
+  };
+  const syncToBackend = async (syncSchedules = true, syncSavings = true) => {
+    if (!account) return;
+    
+    try {
+      const data = {
+        user_address: account,
+        schedules: [],
+        savings_plans: []
+      };
+      
+      if (syncSchedules) {
+        const localSchedules = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
+        data.schedules = localSchedules.map(s => ({
+          id: s.id,
+          user_address: account,
+          agent_address: agentManager?.address || '',
+          vault_address: vaultAddress || '',
+          payment_type: 'vendor',
+          vendor: s.vendor || s.name,
+          vendor_address: s.vendorAddress || s.recipient,
+          amount: parseFloat(s.amount),
+          frequency: s.frequency,
+          execution_time: s.executionTime || '09:00',
+          start_date: s.createdAt || new Date().toISOString(),
+          next_execution: s.nextRun,
+          reason: s.reason || '',
+          is_trusted: s.isTrusted || false,
+          is_active: !s.paused
+        }));
+      }
+      
+      if (syncSavings) {
+        const localPlans = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+        data.savings_plans = localPlans.map(p => ({
+          id: p.id,
+          user_address: account,
+          agent_address: agentManager?.address || '',
+          vault_address: vaultAddress || '',
+          name: p.name,
+          amount: parseFloat(p.amount),
+          frequency: p.frequency || 'monthly',
+          lock_days: parseInt(p.lockDays) || 30,
+          execution_time: p.executionTime || '09:00',
+          start_date: p.createdAt || new Date().toISOString(),
+          next_deposit: p.nextDeposit,
+          unlock_date: p.unlockDate,
+          target_amount: parseFloat(p.targetAmount) || parseFloat(p.amount) * 12,
+          total_saved: parseFloat(p.totalDeposited) || 0,
+          is_active: p.status === 'active',
+          withdrawn: p.withdrawn || false
+        }));
+      }
+      
+      const response = await fetch(`${API_URL}/api/v1/recurring/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Sync failed: ${response.status}`);
+      }
+      
+      console.log('✅ Backend sync successful');
+      return true;
+    } catch (error) {
+      console.error('❌ Backend sync failed:', error);
+      return false;
+    }
+  };
 
+  const loadFromBackend = async () => {
+    if (!account) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/api/v1/recurring/${account}`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.schedules?.length > 0) {
+          const transformedSchedules = data.schedules.map(s => ({
+            id: s.id,
+            vendor: s.vendor,
+            vendorAddress: s.vendor_address,
+            amount: s.amount,
+            frequency: s.frequency,
+            executionTime: s.execution_time,
+            nextRun: s.next_execution,
+            reason: s.reason,
+            isTrusted: s.is_trusted,
+            paused: !s.is_active,
+            createdAt: s.created_at,
+            executionCount: s.execution_count || 0,
+            lastExecuted: s.last_executed
+          }));
+          setSchedules(transformedSchedules);
+          localStorage.setItem(`schedules_${account}`, JSON.stringify(transformedSchedules));
+        }
+        
+        if (data.savingsPlans?.length > 0) {
+          const transformedPlans = data.savingsPlans.map(p => ({
+            id: p.id,
+            name: p.name,
+            amount: p.amount,
+            frequency: p.frequency,
+            lockDays: p.lock_days,
+            executionTime: p.execution_time,
+            nextDeposit: p.next_deposit,
+            unlockDate: p.unlock_date,
+            targetAmount: p.target_amount,
+            totalDeposited: p.total_saved,
+            status: p.is_active ? 'active' : 'paused',
+            withdrawn: p.withdrawn,
+            createdAt: p.created_at
+          }));
+          setSavingsPlans(transformedPlans);
+          localStorage.setItem(`savings_plans_${account}`, JSON.stringify(transformedPlans));
+        }
+        
+        console.log('✅ Loaded from backend');
+        return true;
+      }
+    } catch (error) {
+      console.error('Backend load failed, using localStorage:', error);
+    }
+    
+    const localSchedules = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
+    const localPlans = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+    setSchedules(localSchedules);
+    setSavingsPlans(localPlans);
+    return false;
+  };
   const callClaude = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
