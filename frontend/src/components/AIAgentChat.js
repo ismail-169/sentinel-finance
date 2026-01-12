@@ -35,22 +35,14 @@ const AI_PROVIDERS = {
 };
 
 // Enhanced system prompt with Agent Wallet commands
-const getSystemPrompt = (trustedVendors, schedules, savingsPlans, hasAgentWallet, agentBalance) => {
-  const vendorList = trustedVendors.length > 0
-    ? trustedVendors.map(v => `- ${v.name}: ${v.address}`).join('\n')
-    : '(No trusted vendors configured yet)';
+const getSystemPrompt = (trustedVendors, schedules, savingsPlans, hasAgentWallet, agentBalance, pendingTopUp) => {
+  const vendorList = trustedVendors.length > 0 ? trustedVendors.map(v => `- ${v.name}: ${v.address}`).join('\n') : '(No trusted vendors)';
+  const scheduleList = schedules.length > 0 ? schedules.map(s => `- ${s.amount} MNEE to ${s.vendor} (${s.frequency})`).join('\n') : '(No scheduled payments)';
+  const savingsList = savingsPlans.length > 0 ? savingsPlans.map(s => `- ${s.name}: ${s.amount} MNEE/${s.frequency}, locked ${s.lockDays} days`).join('\n') : '(No savings plans)';
+  const agentWalletInfo = hasAgentWallet ? `\n\nAGENT WALLET STATUS:\n- Connected: Yes\n- Balance: ${agentBalance} MNEE\n- Can execute automated payments without popups` : '\n\nAGENT WALLET STATUS:\n- Not initialized (user needs to set up in Agent Wallet panel)';
 
-  const scheduleList = schedules.length > 0
-    ? schedules.map(s => `- ${s.amount} MNEE to ${s.vendor} (${s.frequency})`).join('\n')
-    : '(No scheduled payments)';
-
-  const savingsList = savingsPlans.length > 0
-    ? savingsPlans.map(s => `- ${s.name}: ${s.amount} MNEE/${s.frequency}, locked for ${s.lockDays} days`).join('\n')
-    : '(No savings plans)';
-
-  const agentWalletInfo = hasAgentWallet 
-    ? `\n\nAGENT WALLET STATUS:\n- Connected: Yes\n- Balance: ${agentBalance} MNEE\n- Can execute automated payments without popups`
-    : '\n\nAGENT WALLET STATUS:\n- Not initialized (user needs to set up in Agent Wallet panel)';
+  // Add pending top-up context
+  const topUpContext = pendingTopUp ? `\n\n⚠️ USER NEEDS TO TOP UP AGENT WALLET: Requested ${pendingTopUp.amount} MNEE for "${pendingTopUp.reason}". Ask them to confirm the amount to fund.` : '';
 
   return `You are SENTINEL AI, an advanced financial assistant with access to a secure cryptocurrency vault containing MNEE stablecoins. You can:
 1. Execute instant payments (via Main Vault - requires wallet popup)
@@ -74,6 +66,8 @@ RESPONSE FORMAT - Always include JSON for actions:
 7. FUND AGENT WALLET: {"action": "fund_agent", "amount": number}
 8. WITHDRAW FROM AGENT: {"action": "withdraw_agent", "amount": number} (amount=0 means withdraw all)
 9. CHECK AGENT BALANCE: {"action": "agent_balance"}
+10. CONFIRM TOP-UP: {"action": "confirm_topup", "amount": number}
+11. DEPOSIT TO SAVINGS: {"action": "deposit_savings", "planId": number, "amount": number}
 
 USER'S TRUSTED VENDORS:
 ${vendorList}
@@ -84,34 +78,12 @@ ${scheduleList}
 ACTIVE SAVINGS PLANS:
 ${savingsList}
 ${agentWalletInfo}
+${topUpContext}
 
-FREQUENCY PARSING:
-- "every week/weekly" = weekly
-- "every month/monthly/1st of each month" = monthly  
-- "every day/daily" = daily
-- "every year/yearly/annually" = yearly
-
-EXAMPLES:
-User: "Pay $50 to Amazon every month starting next week"
-Response: "I'll set up a recurring payment to Amazon! This will use your Agent Wallet for automatic execution.
-{"action": "schedule", "vendor": "Amazon", "amount": 50, "frequency": "monthly", "startDate": "2026-01-18", "reason": "Monthly Amazon payment"}"
-
-User: "Save 20 MNEE every week for 1 year"
-Response: "Great savings goal! I'll create a weekly savings plan locked for 365 days.
-{"action": "savings", "name": "Weekly Savings", "amount": 20, "frequency": "weekly", "lockDays": 365, "reason": "52-week savings challenge"}"
-
-User: "Send 100 MNEE to Netflix now"
-Response: "Processing instant payment to Netflix! This will require a wallet confirmation.
-{"action": "payment", "vendor": "Netflix", "amount": 100, "reason": "Netflix payment"}"
-
-User: "Fund my agent wallet with 500 MNEE"
-Response: "I'll transfer 500 MNEE from your vault to your Agent Wallet for automated payments.
-{"action": "fund_agent", "amount": 500}"
-
-User: "Check my agent wallet balance"
-Response: "{"action": "agent_balance"}"
-
-Be conversational and helpful. Explain whether payments will use the vault (popup) or agent wallet (no popup).`;
+IMPORTANT BEHAVIOR:
+- If user wants to schedule a payment but Agent Wallet balance is LOW, ask them to top up first
+- For savings deposits, check if they want one-time or recurring
+- Be conversational and explain vault vs agent wallet routing`;
 };
 
 const MessageBubble = ({ message, isUser, isSystem }) => {
@@ -136,6 +108,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
           {message.type === 'schedule' && <Calendar size={14} />}
           {message.type === 'savings' && <PiggyBank size={14} />}
           {message.type === 'agent' && <Bot size={14} />}
+          {message.type === 'low-balance' && <AlertTriangle size={14} />}
         </div>
         <span>{message.content}</span>
       </motion.div>
@@ -143,11 +116,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
   }
 
   return (
-    <motion.div
-      className={`message-bubble ${isUser ? 'user' : 'agent'}`}
-      initial={{ opacity: 0, x: isUser ? 20 : -20 }}
-      animate={{ opacity: 1, x: 0 }}
-    >
+    <motion.div className={`message-bubble ${isUser ? 'user' : 'agent'}`} initial={{ opacity: 0, x: isUser ? 20 : -20 }} animate={{ opacity: 1, x: 0 }}>
       <div className="bubble-header">
         <span className="sender">{isUser ? 'USER' : 'AGENT'}</span>
         <span className="timestamp">{message.time}</span>
@@ -196,7 +165,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
           <div className="schedule-card">
             <div className="schedule-header">
               <Repeat size={14} />
-              <span>SCHEDULED PAYMENT</span>
+              <span>SCHEDULED</span>
               <span className="via-badge">⚡ VIA AGENT</span>
             </div>
             <div className="schedule-body">
@@ -374,17 +343,21 @@ export default function AIAgentChat({
   const [savingsPlans, setSavingsPlans] = useState([]);
   const [agentBalance, setAgentBalance] = useState('0');
   const messagesEndRef = useRef(null);
+  const [pendingTopUp, setPendingTopUp] = useState(null);
+  const [lastBalanceCheck, setLastBalanceCheck] = useState(0);
+  const executionTimerRef = useRef(null);
 
-  // Load agent wallet balance
-  useEffect(() => {
-    const loadAgentBalance = async () => {
-      if (agentManager && agentManager.hasWallet() && provider) {
-        const balance = await agentManager.getBalance(provider);
-        setAgentBalance(balance);
-      }
-    };
-    loadAgentBalance();
+  // Load agent balance
+  const loadAgentBalance = useCallback(async () => {
+    if (agentManager && agentManager.hasWallet() && provider) {
+      const balance = await agentManager.getBalance(provider);
+      setAgentBalance(balance);
+      return parseFloat(balance);
+    }
+    return 0;
   }, [agentManager, provider]);
+
+  useEffect(() => { loadAgentBalance(); }, [loadAgentBalance]);
 
   // Load schedules and savings from localStorage
   useEffect(() => {
@@ -394,7 +367,7 @@ export default function AIAgentChat({
     if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
   }, [account]);
 
-  // Save schedules and savings to localStorage
+  // Save to localStorage
   useEffect(() => {
     if (account) {
       localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(schedules));
@@ -402,40 +375,94 @@ export default function AIAgentChat({
     }
   }, [schedules, savingsPlans, account]);
 
-  // Check for due payments on load
+  // BACKGROUND EXECUTION TIMER - Check every 30 seconds for due payments
   useEffect(() => {
-    const checkDuePayments = () => {
+    const checkAndExecuteDuePayments = async () => {
+      if (!agentManager || !agentManager.hasWallet() || !provider) return;
+      
       const now = new Date();
-      schedules.forEach(schedule => {
+      const balance = await loadAgentBalance();
+      
+      // Check schedules
+      for (const schedule of schedules) {
+        if (schedule.paused) continue;
         const nextDate = new Date(schedule.nextDate);
-        if (nextDate <= now && !schedule.notified) {
-          addSystemMessage(`⏰ SCHEDULED PAYMENT DUE: ${schedule.amount} MNEE to ${schedule.vendor}`, 'schedule');
-          setSchedules(prev => prev.map(s => 
-            s.id === schedule.id ? { ...s, notified: true } : s
-          ));
+        
+        if (nextDate <= now) {
+          if (balance >= schedule.amount) {
+            // Execute payment
+            addSystemMessage(`⚡ AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
+            try {
+              const result = await agentManager.sendMNEE(provider, schedule.vendorAddress, schedule.amount.toString(), schedule.reason);
+              if (result.success) {
+                addSystemMessage(`✅ PAID: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
+                // Update next date
+                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false } : s));
+                await loadAgentBalance();
+                onAgentWalletUpdate && onAgentWalletUpdate();
+              } else {
+                addSystemMessage(`❌ FAILED: ${result.error}`, 'danger');
+              }
+            } catch (err) {
+              addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
+            }
+          } else {
+            // LOW BALANCE - Prompt user
+            if (!schedule.lowBalanceNotified) {
+              const shortfall = schedule.amount - balance;
+              addSystemMessage(`⚠️ LOW BALANCE: Can't pay ${schedule.vendor}. Need ${shortfall.toFixed(2)} more MNEE. Say "top up agent with ${Math.ceil(shortfall * 1.2)} MNEE"`, 'low-balance');
+              setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, lowBalanceNotified: true } : s));
+            }
+          }
         }
-      });
+      }
 
-      savingsPlans.forEach(plan => {
+      // Check savings plans
+      for (const plan of savingsPlans) {
         const nextDeposit = new Date(plan.nextDeposit);
-        if (nextDeposit <= now && !plan.notified) {
-          addSystemMessage(`💰 SAVINGS DEPOSIT DUE: ${plan.amount} MNEE for "${plan.name}"`, 'savings');
-          setSavingsPlans(prev => prev.map(p => 
-            p.id === plan.id ? { ...p, notified: true } : p
-          ));
+        if (nextDeposit <= now) {
+          if (balance >= plan.amount) {
+            // Execute deposit
+            addSystemMessage(`💰 AUTO-DEPOSITING: ${plan.amount} MNEE to "${plan.name}"`, 'savings');
+            // For now, update locally. When contract integration is complete, call depositToSavings
+            if (agentManager.depositToSavings && plan.contractPlanId) {
+              try {
+                const result = await agentManager.depositToSavings(provider, plan.contractPlanId, plan.amount.toString());
+                if (result.success) {
+                  addSystemMessage(`✅ DEPOSITED: ${plan.amount} MNEE to savings`, 'success');
+                }
+              } catch (err) {
+                addSystemMessage(`❌ Deposit failed: ${err.message}`, 'danger');
+              }
+            }
+            // Update local state
+            setSavingsPlans(prev => prev.map(p => p.id === plan.id ? {
+              ...p,
+              totalSaved: (p.totalSaved || 0) + plan.amount,
+              depositsCompleted: (p.depositsCompleted || 0) + 1,
+              nextDeposit: calculateNextDate(p.frequency),
+              notified: false
+            } : p));
+            await loadAgentBalance();
+          } else if (!plan.lowBalanceNotified) {
+            const shortfall = plan.amount - balance;
+            addSystemMessage(`⚠️ LOW BALANCE: Can't deposit to "${plan.name}". Need ${shortfall.toFixed(2)} more MNEE.`, 'low-balance');
+            setSavingsPlans(prev => prev.map(p => p.id === plan.id ? { ...p, lowBalanceNotified: true } : p));
+          }
         }
-      });
+      }
     };
 
-    if (schedules.length > 0 || savingsPlans.length > 0) {
-      checkDuePayments();
-    }
-  }, [schedules, savingsPlans]);
+    // Run immediately and then every 30 seconds
+    checkAndExecuteDuePayments();
+    executionTimerRef.current = setInterval(checkAndExecuteDuePayments, 30000);
+    
+    return () => {
+      if (executionTimerRef.current) clearInterval(executionTimerRef.current);
+    };
+  }, [schedules, savingsPlans, agentManager, provider, loadAgentBalance, onAgentWalletUpdate]);
 
-  useEffect(() => {
-    console.log('🏪 AIAgentChat received trustedVendors:', trustedVendors);
-  }, [trustedVendors]);
-  
+  // Welcome message
   useEffect(() => {
     if (hasInitialized) return;
     
@@ -460,19 +487,6 @@ export default function AIAgentChat({
     }
   }, [trustedVendors, hasInitialized, agentManager, agentBalance]);
 
-  const getApiKey = (providerKey) => {
-    const envKey = AI_PROVIDERS[providerKey].envKey;
-    return process.env[envKey] || '';
-  };
-
-  const availableProviders = Object.entries(AI_PROVIDERS).filter(
-    ([key]) => getApiKey(key)
-  );
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -482,6 +496,14 @@ export default function AIAgentChat({
       setSelectedProvider(availableProviders[0][0]);
     }
   }, [selectedProvider, availableProviders]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const addMessage = (content, isUser = false, extra = {}) => {
     const newMessage = {
@@ -550,74 +572,119 @@ export default function AIAgentChat({
     return next.toISOString().split('T')[0];
   };
 
-  // Create schedule - now marks for agent wallet execution
-  const createSchedule = (intent) => {
+  // Check if agent has sufficient balance for a recurring action
+  const checkAgentBalance = async (requiredAmount, actionType = 'payment') => {
+    const balance = await loadAgentBalance();
+    if (balance < requiredAmount) {
+      const shortfall = requiredAmount - balance;
+      setPendingTopUp({ amount: requiredAmount, reason: actionType, shortfall });
+      return { sufficient: false, balance, shortfall, required: requiredAmount };
+    }
+    setPendingTopUp(null);
+    return { sufficient: true, balance };
+  };
+
+  // Create schedule with balance check
+  const createSchedule = async (intent) => {
     const vendor = getVendorAddress(intent.vendor);
-    const startDate = intent.startDate || new Date().toISOString().split('T')[0];
+    const amount = parseFloat(intent.amount);
     
+    // Check if agent has balance for first payment
+    const balanceCheck = await checkAgentBalance(amount, `${intent.vendor} payment`);
+    if (!balanceCheck.sufficient) {
+      addMessage(`⚠️ Your Agent Wallet only has ${balanceCheck.balance.toFixed(2)} MNEE, but this recurring payment needs ${amount} MNEE. Would you like to top up your Agent Wallet first? Say "top up agent with ${Math.ceil(balanceCheck.shortfall * 1.2)} MNEE"`, false, {
+        provider: AI_PROVIDERS[selectedProvider].name,
+        topUpPrompt: { type: 'recurring payment', required: amount, current: balanceCheck.balance, shortfall: balanceCheck.shortfall }
+      });
+      return null;
+    }
+
+    const startDate = intent.startDate || new Date().toISOString().split('T')[0];
     const newSchedule = {
       id: `sched_${Date.now()}`,
       vendor: vendor.name || intent.vendor,
       vendorAddress: vendor.address,
-      amount: parseFloat(intent.amount),
+      amount: amount,
       frequency: intent.frequency || 'monthly',
       startDate: startDate,
       nextDate: calculateNextDate(intent.frequency || 'monthly', new Date(startDate)),
       reason: intent.reason || 'Scheduled payment',
       isTrusted: vendor.isTrusted,
-      useAgentWallet: true, // NEW: Flag for agent wallet execution
+      useAgentWallet: true,
       createdAt: new Date().toISOString(),
-      notified: false
+      notified: false,
+      lowBalanceNotified: false
     };
 
     setSchedules(prev => [...prev, newSchedule]);
     addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${newSchedule.frequency}) via Agent Wallet`, 'schedule');
-    
-    return {
-      vendor: newSchedule.vendor,
-      amount: newSchedule.amount,
-      frequency: newSchedule.frequency,
-      nextDate: newSchedule.nextDate
-    };
+    return { vendor: newSchedule.vendor, amount: newSchedule.amount, frequency: newSchedule.frequency, nextDate: newSchedule.nextDate };
   };
 
+  // Create savings plan with balance check
   const createSavingsPlan = async (intent) => {
     const amount = parseFloat(intent.amount);
     const lockDays = parseInt(intent.lockDays) || 365;
     const frequency = intent.frequency || 'weekly';
     
-    const depositsPerPeriod = {
-      'daily': lockDays,
-      'weekly': Math.floor(lockDays / 7),
-      'monthly': Math.floor(lockDays / 30)
-    };
-    
+    // Check balance for first deposit
+    const balanceCheck = await checkAgentBalance(amount, 'savings deposit');
+    if (!balanceCheck.sufficient) {
+      addMessage(`Your Agent Wallet needs ${amount} MNEE for the first savings deposit, but only has ${balanceCheck.balance.toFixed(2)} MNEE. Top up your Agent Wallet to continue.`, false, {
+        provider: AI_PROVIDERS[selectedProvider].name,
+        topUpPrompt: { type: 'savings deposit', required: amount, current: balanceCheck.balance, shortfall: balanceCheck.shortfall }
+      });
+      return null;
+    }
+
+    const depositsPerPeriod = { 'daily': lockDays, 'weekly': Math.floor(lockDays / 7), 'monthly': Math.floor(lockDays / 30) };
     const totalDeposits = depositsPerPeriod[frequency] || Math.floor(lockDays / 7);
     const targetAmount = amount * totalDeposits;
     
     const unlockDate = new Date();
     unlockDate.setDate(unlockDate.getDate() + lockDays);
 
+    // Try to create on-chain savings plan if agentManager supports it
+    let contractPlanId = null;
+    if (agentManager && agentManager.createSavingsPlan) {
+      addSystemMessage(`⏳ Creating savings plan on blockchain...`, 'info');
+      try {
+        const result = await agentManager.createSavingsPlan(provider, intent.name || `${frequency} Savings`, lockDays, amount.toString(), true);
+        if (result.success) {
+          contractPlanId = result.planId;
+          addSystemMessage(`✅ On-chain savings plan created (ID: ${contractPlanId})`, 'success');
+          await loadAgentBalance();
+          onAgentWalletUpdate && onAgentWalletUpdate();
+        } else {
+          addSystemMessage(`⚠️ On-chain creation failed: ${result.error}. Saving locally.`, 'warning');
+        }
+      } catch (err) {
+        addSystemMessage(`⚠️ Contract error: ${err.message}. Saving locally.`, 'warning');
+      }
+    }
+
     const newPlan = {
       id: `save_${Date.now()}`,
+      contractPlanId,
       name: intent.name || `${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Savings`,
       amount: amount,
       frequency: frequency,
       lockDays: lockDays,
       targetAmount: targetAmount,
-      totalSaved: 0,
+      totalSaved: contractPlanId ? amount : 0,
       totalDeposits: totalDeposits,
-      depositsCompleted: 0,
+      depositsCompleted: contractPlanId ? 1 : 0,
       startDate: new Date().toISOString(),
       nextDeposit: calculateNextDate(frequency),
       unlockDate: unlockDate.toISOString().split('T')[0],
       reason: intent.reason || 'Savings plan',
       createdAt: new Date().toISOString(),
-      notified: false
+      notified: false,
+      lowBalanceNotified: false
     };
 
     setSavingsPlans(prev => [...prev, newPlan]);
-    addSystemMessage(`✅ SAVINGS PLAN CREATED: "${newPlan.name}" - ${amount} MNEE/${frequency} for ${lockDays} days`, 'savings');
+    addSystemMessage(`✅ SAVINGS PLAN: "${newPlan.name}" - ${amount} MNEE/${frequency} for ${lockDays} days`, 'savings');
     
     return {
       name: newPlan.name,
@@ -629,23 +696,14 @@ export default function AIAgentChat({
     };
   };
 
-  const cancelScheduleOrSavings = (type, id) => {
-    if (type === 'schedule') {
-      setSchedules(prev => prev.filter(s => s.id !== id));
-      addSystemMessage(`🗑️ Schedule cancelled`, 'warning');
-    } else {
-      setSavingsPlans(prev => prev.filter(s => s.id !== id));
-      addSystemMessage(`🗑️ Savings plan cancelled`, 'warning');
-    }
-  };
-
   // Execute schedule - tries agent wallet first, falls back to vault
   const executeScheduleNow = async (schedule) => {
     // Try agent wallet first if available and has balance
     if (agentManager && agentManager.hasWallet() && schedule.useAgentWallet) {
       const balance = parseFloat(await agentManager.getBalance(provider));
       if (balance >= schedule.amount && schedule.vendorAddress) {
-        addSystemMessage(`⚡ EXECUTING VIA AGENT WALLET (no popup)...`, 'agent');
+        // Execute payment
+        addSystemMessage(`⚡ AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
         try {
           const result = await agentManager.sendMNEE(
             provider,
@@ -653,23 +711,20 @@ export default function AIAgentChat({
             schedule.amount.toString(),
             schedule.reason
           );
-          
           if (result.success) {
-            addSystemMessage(`✅ PAYMENT COMPLETE - ${schedule.amount} MNEE sent to ${schedule.vendor}`, 'success');
+            addSystemMessage(`✅ PAID: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
+            // Update next date
             setSchedules(prev => prev.map(s => 
               s.id === schedule.id 
                 ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false }
                 : s
             ));
-            
-            // Update agent balance
-            const newBalance = await agentManager.getBalance(provider);
-            setAgentBalance(newBalance);
+            await loadAgentBalance();
             onAgentWalletUpdate && onAgentWalletUpdate();
             return;
           }
         } catch (err) {
-          addSystemMessage(`⚠️ Agent wallet failed: ${err.message}. Falling back to vault...`, 'warning');
+          addSystemMessage(`❌ FAILED: ${err.message}. Falling back to vault...`, 'danger');
         }
       }
     }
@@ -829,12 +884,11 @@ export default function AIAgentChat({
 
       if (result.success) {
         addSystemMessage(`✅ Withdrawn ${result.amount} MNEE to vault`, 'success');
-        const newBalance = await agentManager.getBalance(provider);
-        setAgentBalance(newBalance);
+        await loadAgentBalance();
         onAgentWalletUpdate && onAgentWalletUpdate();
         
         return {
-          balance: newBalance,
+          balance: await agentManager.getBalance(provider),
           action: `WITHDRAWN ${result.amount} MNEE`,
           txHash: result.txHash
         };
@@ -846,7 +900,7 @@ export default function AIAgentChat({
   };
 
   // NEW: Check agent balance
-  const checkAgentBalance = async () => {
+  const checkAgentBalanceAction = async () => {
     if (!agentManager || !agentManager.hasWallet()) {
       return {
         balance: '0',
@@ -858,14 +912,14 @@ export default function AIAgentChat({
     setAgentBalance(balance);
     
     return {
-      balance: balance,
+      balance,
       action: 'BALANCE_CHECKED'
     };
   };
 
   const callClaude = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
-    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance);
+    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
     const response = await fetch(AI_PROVIDERS.claude.endpoint, {
       method: 'POST',
       headers: {
@@ -888,18 +942,12 @@ export default function AIAgentChat({
 
   const callGrok = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
-    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance);
+    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
     try {
       const response = await fetch(AI_PROVIDERS.grok.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: AI_PROVIDERS.grok.model,
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
-          max_tokens: 1024,
-          stream: false,
-          temperature: 0.7
-        })
+        body: JSON.stringify({ model: AI_PROVIDERS.grok.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], max_tokens: 1024, stream: false, temperature: 0.7 })
       });
       if (!response.ok) throw new Error('Grok API request failed');
       const data = await response.json();
@@ -912,15 +960,11 @@ export default function AIAgentChat({
 
   const callOpenAI = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
-    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance);
+    const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
     const response = await fetch(AI_PROVIDERS.openai.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: AI_PROVIDERS.openai.model,
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
-        max_tokens: 1024
-      })
+      body: JSON.stringify({ model: AI_PROVIDERS.openai.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], max_tokens: 1024 })
     });
     if (!response.ok) throw new Error('OpenAI API request failed');
     const data = await response.json();
@@ -975,19 +1019,23 @@ export default function AIAgentChat({
             break;
 
           case 'schedule':
-            const scheduleResult = createSchedule(intent);
-            addMessage(cleanResponse, false, { 
-              provider: AI_PROVIDERS[selectedProvider].name,
-              schedule: scheduleResult
-            });
+            const scheduleResult = await createSchedule(intent);
+            if (scheduleResult) {
+              addMessage(cleanResponse, false, { 
+                provider: AI_PROVIDERS[selectedProvider].name,
+                schedule: scheduleResult
+              });
+            }
             break;
 
           case 'savings':
             const savingsResult = await createSavingsPlan(intent);
-            addMessage(cleanResponse, false, { 
-              provider: AI_PROVIDERS[selectedProvider].name,
-              savings: savingsResult
-            });
+            if (savingsResult) {
+              addMessage(cleanResponse, false, { 
+                provider: AI_PROVIDERS[selectedProvider].name,
+                savings: savingsResult
+              });
+            }
             break;
 
           case 'view_schedules':
@@ -1025,18 +1073,23 @@ export default function AIAgentChat({
 
           case 'withdraw_agent':
             const withdrawResult = await withdrawFromAgent(parseFloat(intent.amount) || 0);
-            addMessage(cleanResponse || 'Withdrawal processed.', false, { 
+            addMessage(cleanResponse || (withdrawResult ? `Withdrawn. New balance: ${withdrawResult.balance} MNEE` : 'Withdrawal failed.'), false, { 
               provider: AI_PROVIDERS[selectedProvider].name,
               agentWallet: withdrawResult
             });
             break;
 
           case 'agent_balance':
-            const balanceResult = await checkAgentBalance();
+            const balanceResult = await checkAgentBalanceAction();
             addMessage(`Your Agent Wallet balance is ${balanceResult.balance} MNEE.`, false, { 
               provider: AI_PROVIDERS[selectedProvider].name,
               agentWallet: balanceResult
             });
+            break;
+
+          case 'confirm_topup':
+            await fundAgentWallet(intent.amount);
+            addMessage(`Please confirm the ${intent.amount} MNEE transfer in the Agent Wallet panel.`, false, { provider: AI_PROVIDERS[selectedProvider].name });
             break;
 
           default:
@@ -1061,7 +1114,7 @@ export default function AIAgentChat({
       <div className={`ai-container ${showSchedulePanel ? 'with-panel' : ''}`}>
         <div className="chat-header">
           <div className="terminal-header">
-            <img src={sentinelLogo} alt="Logo" className="site-logo" style={{ height: '20px' }} />
+            <img src={sentinelLogo} alt="Sentinel" className="site-logo" style={{ height: '20px' }} />
             <span>SENTINEL_AI_CORE // V2.2</span>
             {hasAgentWallet && (
               <span className="agent-indicator">
@@ -1169,7 +1222,6 @@ export default function AIAgentChat({
         .menu-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); z-index: 100; min-width: 140px; }
         .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; background: none; border: none; color: var(--text-primary, #ffcc00); font-family: var(--font-pixel); font-size: 12px; cursor: pointer; text-align: left; }
         .menu-item:hover { background: var(--bg-secondary, #252525); }
-        .menu-item.disabled { opacity: 0.4; cursor: not-allowed; }
         .message-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: var(--bg-primary, #1a1a1a); }
         .system-message { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; background: var(--bg-secondary, #252525); border-left: 3px solid var(--text-primary, #ffcc00); }
         .system-message.success { border-color: var(--accent-emerald); color: var(--accent-emerald); }
@@ -1179,30 +1231,29 @@ export default function AIAgentChat({
         .system-message.schedule { border-color: #60a5fa; color: #60a5fa; }
         .system-message.savings { border-color: #a855f7; color: #a855f7; }
         .system-message.agent { border-color: #60a5fa; color: #60a5fa; }
+        .system-message.low-balance { background: rgba(255, 59, 48, 0.15); border-color: var(--accent-red); color: var(--accent-red); }
         .sys-icon { display: flex; }
         .message-bubble { max-width: 85%; padding: 12px 16px; background: var(--bg-card, #2a2a2a); border: 2px solid var(--border-color, #ffcc00); }
         .message-bubble.user { align-self: flex-end; border-color: #60a5fa; }
         .message-bubble.agent { align-self: flex-start; }
         .bubble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-color, #ffcc00); }
         .message-bubble.user .bubble-header { border-color: #60a5fa; }
-        .sender { font-family: var(--font-pixel); font-size: 10px; color: var(--text-primary, #ffcc00); }
+        .sender { font-family: var(--font-pixel); font-size: 10px; color: var(--text-secondary, #e6b800); }
         .message-bubble.user .sender { color: #60a5fa; }
         .timestamp { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted, #b38f00); }
         .message-text { font-family: var(--font-mono); font-size: 13px; line-height: 1.5; color: var(--text-secondary, #e6b800); white-space: pre-wrap; }
         .payment-receipt, .schedule-card, .savings-card, .agent-card { margin-top: 12px; background: var(--bg-secondary, #252525); border: 1px solid var(--border-color, #ffcc00); padding: 10px; }
-        .receipt-header, .schedule-header, .savings-header, .agent-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed var(--border-color, #ffcc00); font-family: var(--font-pixel); font-size: 10px; color: var(--text-primary, #ffcc00); }
-        .status-tag { margin-left: auto; padding: 2px 8px; font-size: 9px; }
-        .status-tag.executed, .status-tag.approved { background: var(--accent-emerald); color: white; }
-        .status-tag.pending { background: var(--accent-amber, #ffcc00); color: black; }
-        .status-tag.blocked { background: var(--accent-red); color: white; }
+        .receipt-header, .schedule-header, .savings-header, .agent-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed var(--border-color, #ffcc00); font-family: var(--font-pixel); font-size: 10px; color: var(--text-muted, #b38f00); }
         .receipt-body, .schedule-body, .savings-body, .agent-body { display: flex; flex-direction: column; gap: 6px; }
-        .receipt-row, .schedule-row, .savings-row, .agent-row { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted, #b38f00); }
+        .receipt-row, .sched-row, .save-row, .agent-row { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted, #b38f00); }
+        .receipt-row span:first-child, .sched-row span:first-child, .save-row span:first-child, .agent-row span:first-child { color: var(--text-muted, #b38f00); }
         .mono { font-family: var(--font-mono); color: var(--text-secondary, #e6b800); }
         .bold { font-weight: 700; }
-        .risk-val.low { color: var(--accent-emerald); }
-        .risk-val.med { color: var(--accent-amber, #ffcc00); }
-        .risk-val.high { color: var(--accent-red); }
-        .route-tag { padding: 2px 6px; font-size: 10px; font-family: var(--font-pixel); }
+        .status-tag { margin-left: auto; padding: 2px 8px; font-size: 9px; }
+        .status-tag.executed, .status-tag.approved { background: var(--accent-emerald); color: white; }
+        .status-tag.pending { background: var(--accent-amber); color: black; }
+        .status-tag.blocked { background: var(--accent-red); color: white; }
+        .route-tag { padding: 2px 6px; font-size: 9px; font-weight: 700; }
         .route-tag.agent { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
         .route-tag.vault { background: rgba(255, 204, 0, 0.2); color: var(--text-primary, #ffcc00); }
         .via-badge { margin-left: auto; padding: 2px 6px; background: rgba(96, 165, 250, 0.2); color: #60a5fa; font-size: 9px; }
@@ -1212,10 +1263,17 @@ export default function AIAgentChat({
         .savings-header { color: #a855f7; border-color: #a855f7; }
         .agent-card { border-color: #60a5fa; }
         .agent-header { color: #60a5fa; border-color: #60a5fa; }
+        .topup-prompt { margin-top: 12px; padding: 12px; background: rgba(255, 59, 48, 0.1); border: 2px solid var(--accent-red); }
+        .topup-header { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: var(--accent-red); margin-bottom: 10px; }
+        .topup-body { font-size: 12px; color: var(--text-secondary, #e6b800); }
+        .topup-body p { margin: 0 0 8px 0; }
+        .topup-details { display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg-card, #2a2a2a); margin-bottom: 8px; }
+        .topup-details span { font-size: 11px; }
+        .topup-hint { font-style: italic; color: var(--text-muted, #b38f00); font-size: 11px; }
         .provider-tag { margin-top: 10px; font-family: var(--font-mono); font-size: 9px; color: var(--text-muted, #b38f00); text-align: right; }
         .input-controls { display: flex; padding: 16px; border-top: 2px solid var(--border-color, #ffcc00); background: var(--bg-card, #2a2a2a); }
         .input-controls input { flex: 1; padding: 14px 16px; background: var(--bg-primary, #1a1a1a); border: 2px solid var(--border-color, #ffcc00); color: var(--text-primary, #ffcc00); font-family: var(--font-mono); font-size: 14px; }
-        .input-controls input::placeholder { color: var(--text-muted, #b38f00); }
+        .input-controls input::placeholder { color: var(--text-secondary, #e6b800); }
         .input-controls input:focus { outline: none; border-color: #60a5fa; }
         .input-controls button { padding: 14px 20px; background: var(--text-primary, #ffcc00); color: var(--bg-primary, #1a1a1a); border: 2px solid var(--text-primary, #ffcc00); border-left: none; cursor: pointer; font-weight: 700; }
         .input-controls button:hover:not(:disabled) { background: var(--accent-emerald); border-color: var(--accent-emerald); color: white; }

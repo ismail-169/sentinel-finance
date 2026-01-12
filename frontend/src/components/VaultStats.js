@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ethers } from 'ethers';
 import {
   Shield, Lock, Unlock, Users, TrendingUp, Settings,
   DollarSign, Clock, CheckCircle, AlertTriangle, Plus,
   Trash2, ExternalLink, Copy, Edit2, Save, X, Loader,
-  PiggyBank, Calendar, Repeat
+  PiggyBank, Calendar, Repeat, Play, Pause
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 
@@ -14,6 +14,21 @@ const formatTimeLock = (seconds) => {
   if (seconds < 60) return `${seconds} SEC`;
   if (seconds < 3600) return `${Math.round(seconds / 60)} MIN`;
   return `${(seconds / 3600).toFixed(1)}H`;
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const formatDaysLeft = (unlockDate) => {
+  const now = new Date();
+  const unlock = new Date(unlockDate);
+  const diff = Math.ceil((unlock - now) / (1000 * 60 * 60 * 24));
+  if (diff <= 0) return 'UNLOCKED';
+  if (diff === 1) return '1 DAY';
+  return `${diff} DAYS`;
 };
 
 const StatBox = ({ icon: Icon, label, value, subValue, color, delay }) => (
@@ -145,7 +160,7 @@ const SavingsPlansCard = ({ savingsPlans }) => {
       </div>
       <div className="spc-list">
         {savingsPlans.slice(0, 3).map(plan => {
-          const progress = Math.min(100, (plan.totalSaved / plan.targetAmount) * 100);
+          const progress = Math.min(100, ((plan.totalSaved || 0) / (plan.targetAmount || 1)) * 100);
           const daysLeft = Math.max(0, Math.ceil((new Date(plan.unlockDate) - new Date()) / (1000 * 60 * 60 * 24)));
           
           return (
@@ -159,7 +174,7 @@ const SavingsPlansCard = ({ savingsPlans }) => {
                 <div className="progress-track">
                   <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                 </div>
-                <span className="progress-text">{plan.totalSaved.toFixed(0)} / {plan.targetAmount.toFixed(0)} MNEE</span>
+                <span className="progress-text">{(plan.totalSaved || 0).toFixed(0)} / {(plan.targetAmount || 0).toFixed(0)} MNEE</span>
               </div>
             </div>
           );
@@ -258,6 +273,348 @@ const SavingsPlansCard = ({ savingsPlans }) => {
   );
 };
 
+// NEW: Schedule Item Component for RECURRING tab
+const ScheduleItem = ({ schedule, onCancel, onEdit, onTogglePause }) => {
+  const [editing, setEditing] = useState(false);
+  const [editAmount, setEditAmount] = useState(schedule.amount);
+  const [editFrequency, setEditFrequency] = useState(schedule.frequency);
+
+  const handleSave = () => {
+    onEdit(schedule.id, { amount: parseFloat(editAmount), frequency: editFrequency });
+    setEditing(false);
+  };
+
+  const isOverdue = new Date(schedule.nextDate) < new Date();
+
+  return (
+    <motion.div 
+      className={`schedule-item ${schedule.paused ? 'paused' : ''} ${isOverdue ? 'overdue' : ''}`}
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      layout
+    >
+      <div className="schedule-icon">
+        <Repeat size={16} />
+      </div>
+      
+      <div className="schedule-content">
+        <div className="schedule-header">
+          <span className="sched-vendor">{schedule.vendor}</span>
+          <div className="schedule-badges">
+            {schedule.useAgentWallet && <span className="badge agent">⚡ AGENT</span>}
+            {schedule.paused && <span className="badge paused">PAUSED</span>}
+            {isOverdue && !schedule.paused && <span className="badge overdue">OVERDUE</span>}
+          </div>
+        </div>
+
+        {editing ? (
+          <div className="edit-row">
+            <input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="edit-input" />
+            <select value={editFrequency} onChange={(e) => setEditFrequency(e.target.value)} className="edit-select">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <button className="edit-save" onClick={handleSave}><Save size={12} /></button>
+            <button className="edit-cancel" onClick={() => setEditing(false)}><X size={12} /></button>
+          </div>
+        ) : (
+          <div className="schedule-details">
+            <span className="sched-amount">{schedule.amount} MNEE</span>
+            <span className="sched-freq">/{schedule.frequency}</span>
+          </div>
+        )}
+
+        <div className="schedule-meta">
+          <span><Clock size={10} /> Next: {formatDate(schedule.nextDate)}</span>
+          {schedule.reason && <span className="sched-reason">{schedule.reason}</span>}
+        </div>
+      </div>
+
+      <div className="schedule-actions">
+        <button className="sched-btn pause" onClick={() => onTogglePause(schedule.id)} title={schedule.paused ? 'Resume' : 'Pause'}>
+          {schedule.paused ? <Play size={14} /> : <Pause size={14} />}
+        </button>
+        <button className="sched-btn edit" onClick={() => setEditing(!editing)} title="Edit">
+          <Edit2 size={14} />
+        </button>
+        <button className="sched-btn delete" onClick={() => onCancel(schedule.id)} title="Cancel">
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      <style jsx>{`
+        .schedule-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 16px;
+          background: var(--bg-secondary, #252525);
+          border: 2px solid var(--border-color, #ffcc00);
+          transition: all 0.2s;
+        }
+        .schedule-item.paused { opacity: 0.6; border-style: dashed; }
+        .schedule-item.overdue { border-color: var(--accent-red); }
+
+        .schedule-icon {
+          width: 36px;
+          height: 36px;
+          background: rgba(96, 165, 250, 0.2);
+          border: 2px solid #60a5fa;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #60a5fa;
+          flex-shrink: 0;
+        }
+
+        .schedule-content { flex: 1; min-width: 0; }
+
+        .schedule-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .sched-vendor { font-weight: 700; font-size: 14px; color: var(--text-primary, #ffcc00); }
+
+        .schedule-badges { display: flex; gap: 6px; }
+        .badge {
+          font-size: 9px;
+          font-weight: 700;
+          padding: 2px 6px;
+          border: 1px solid;
+        }
+        .badge.agent { background: rgba(96, 165, 250, 0.2); border-color: #60a5fa; color: #60a5fa; }
+        .badge.paused { background: rgba(245, 158, 11, 0.2); border-color: var(--accent-amber); color: var(--accent-amber); }
+        .badge.overdue { background: rgba(255, 59, 48, 0.2); border-color: var(--accent-red); color: var(--accent-red); }
+
+        .schedule-details {
+          font-family: var(--font-mono);
+          font-size: 16px;
+          font-weight: 700;
+          color: var(--text-primary, #ffcc00);
+          margin-bottom: 8px;
+        }
+        .sched-freq { color: var(--text-muted, #b38f00); font-size: 12px; }
+
+        .schedule-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          font-size: 11px;
+          color: var(--text-muted, #b38f00);
+        }
+        .schedule-meta span { display: flex; align-items: center; gap: 4px; }
+        .sched-reason { font-style: italic; }
+
+        .edit-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .edit-input {
+          width: 80px;
+          padding: 6px 8px;
+          background: var(--bg-card, #2a2a2a);
+          border: 1px solid var(--border-color, #ffcc00);
+          color: var(--text-primary, #ffcc00);
+          font-family: var(--font-mono);
+          font-size: 12px;
+        }
+        .edit-select {
+          padding: 6px 8px;
+          background: var(--bg-card, #2a2a2a);
+          border: 1px solid var(--border-color, #ffcc00);
+          color: var(--text-primary, #ffcc00);
+          font-size: 11px;
+        }
+        .edit-save, .edit-cancel {
+          padding: 6px;
+          border: 1px solid var(--border-color, #ffcc00);
+          background: var(--bg-card, #2a2a2a);
+          color: var(--text-primary, #ffcc00);
+          cursor: pointer;
+        }
+        .edit-save:hover { background: var(--accent-emerald); color: white; border-color: var(--accent-emerald); }
+        .edit-cancel:hover { background: var(--accent-red); color: white; border-color: var(--accent-red); }
+
+        .schedule-actions { display: flex; flex-direction: column; gap: 4px; }
+        .sched-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-card, #2a2a2a);
+          border: 1px solid var(--border-color, #ffcc00);
+          color: var(--text-primary, #ffcc00);
+          cursor: pointer;
+          transition: all 0.1s;
+        }
+        .sched-btn.pause:hover { background: var(--accent-amber); color: var(--bg-primary, #1a1a1a); }
+        .sched-btn.edit:hover { background: #60a5fa; color: white; }
+        .sched-btn.delete:hover { background: var(--accent-red); color: white; border-color: var(--accent-red); }
+      `}</style>
+    </motion.div>
+  );
+};
+
+// NEW: Savings Plan Item for RECURRING tab
+const SavingsPlanItem = ({ plan, onCancel }) => {
+  const progress = (plan.targetAmount || 0) > 0 ? Math.min(100, ((plan.totalSaved || 0) / plan.targetAmount) * 100) : 0;
+  const daysLeft = formatDaysLeft(plan.unlockDate);
+  const isUnlocked = daysLeft === 'UNLOCKED';
+
+  return (
+    <motion.div 
+      className={`savings-item ${isUnlocked ? 'unlocked' : ''}`}
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      layout
+    >
+      <div className="savings-icon">
+        <PiggyBank size={16} />
+      </div>
+      
+      <div className="savings-content">
+        <div className="savings-header">
+          <span className="plan-name">{plan.name}</span>
+          <span className={`days-badge ${isUnlocked ? 'unlocked' : ''}`}>
+            <Lock size={10} /> {daysLeft}
+          </span>
+        </div>
+
+        <div className="savings-progress">
+          <div className="prog-bar">
+            <div className="prog-fill" style={{ width: `${progress}%` }}></div>
+          </div>
+          <div className="prog-text">
+            <span>{(plan.totalSaved || 0).toFixed(2)} / {(plan.targetAmount || 0).toFixed(2)} MNEE</span>
+            <span>{progress.toFixed(0)}%</span>
+          </div>
+        </div>
+
+        <div className="savings-meta">
+          <span><Repeat size={10} /> {plan.amount} MNEE/{plan.frequency}</span>
+          <span><Calendar size={10} /> Next: {formatDate(plan.nextDeposit)}</span>
+        </div>
+      </div>
+
+      <div className="savings-actions">
+        {isUnlocked ? (
+          <button className="withdraw-btn"><Unlock size={14} /> WITHDRAW</button>
+        ) : (
+          <button className="cancel-btn" onClick={() => onCancel(plan.id)} title="Cancel Plan">
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+
+      <style jsx>{`
+        .savings-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 16px;
+          background: var(--bg-secondary, #252525);
+          border: 2px solid #a855f7;
+        }
+        .savings-item.unlocked { border-color: var(--accent-emerald); }
+
+        .savings-icon {
+          width: 36px;
+          height: 36px;
+          background: rgba(168, 85, 247, 0.2);
+          border: 2px solid #a855f7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #a855f7;
+          flex-shrink: 0;
+        }
+
+        .savings-content { flex: 1; min-width: 0; }
+
+        .savings-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 12px;
+        }
+        .plan-name { font-weight: 700; font-size: 14px; color: var(--text-primary, #ffcc00); }
+        
+        .days-badge {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 4px 8px;
+          background: rgba(168, 85, 247, 0.2);
+          border: 1px solid #a855f7;
+          color: #a855f7;
+        }
+        .days-badge.unlocked { background: rgba(0, 204, 102, 0.2); border-color: var(--accent-emerald); color: var(--accent-emerald); }
+
+        .savings-progress { margin-bottom: 12px; }
+        .prog-bar {
+          height: 8px;
+          background: var(--bg-card, #2a2a2a);
+          border: 1px solid var(--border-color, #ffcc00);
+          margin-bottom: 6px;
+        }
+        .prog-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #a855f7, #60a5fa);
+        }
+        .prog-text {
+          display: flex;
+          justify-content: space-between;
+          font-size: 11px;
+          font-family: var(--font-mono);
+          color: var(--text-muted, #b38f00);
+        }
+
+        .savings-meta {
+          display: flex;
+          gap: 16px;
+          font-size: 11px;
+          color: var(--text-muted, #b38f00);
+        }
+        .savings-meta span { display: flex; align-items: center; gap: 4px; }
+
+        .savings-actions { display: flex; flex-direction: column; gap: 4px; }
+        
+        .withdraw-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 12px;
+          background: var(--accent-emerald);
+          border: none;
+          color: white;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .withdraw-btn:hover { opacity: 0.9; }
+
+        .cancel-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-card, #2a2a2a);
+          border: 1px solid var(--accent-red);
+          color: var(--accent-red);
+          cursor: pointer;
+        }
+        .cancel-btn:hover { background: var(--accent-red); color: white; }
+      `}</style>
+    </motion.div>
+  );
+};
+
 const LimitEditor = ({ icon: Icon, label, value, unit, onSave }) => {
   const [editing, setEditing] = useState(false);
   const [newValue, setNewValue] = useState(value);
@@ -345,7 +702,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
   const [limitsError, setLimitsError] = useState('');
   const [limitsSuccess, setLimitsSuccess] = useState(false);
 
-  // Load savings plans from localStorage
+  // Load savings plans and schedules from localStorage
   useEffect(() => {
     const loadAutomations = () => {
       if (account) {
@@ -383,6 +740,37 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
 
   // Calculate locked savings
   const totalLockedSavings = savingsPlans.reduce((sum, p) => sum + (p.totalSaved || 0), 0);
+
+  // NEW: Schedule management functions
+  const handleCancelSchedule = (scheduleId) => {
+    const updated = schedules.filter(s => s.id !== scheduleId);
+    setSchedules(updated);
+    localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(updated));
+  };
+
+  const handleEditSchedule = (scheduleId, updates) => {
+    const updated = schedules.map(s => 
+      s.id === scheduleId ? { ...s, ...updates } : s
+    );
+    setSchedules(updated);
+    localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(updated));
+  };
+
+  const handleTogglePause = (scheduleId) => {
+    const updated = schedules.map(s => 
+      s.id === scheduleId ? { ...s, paused: !s.paused } : s
+    );
+    setSchedules(updated);
+    localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(updated));
+  };
+
+  const handleCancelSavingsPlan = (planId) => {
+    if (window.confirm('Cancel this savings plan? Any locked funds will be returned to your vault.')) {
+      const updated = savingsPlans.filter(p => p.id !== planId);
+      setSavingsPlans(updated);
+      localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(updated));
+    }
+  };
 
   const handleAddVendor = async () => {
     if (!contract || !newVendorAddress) return;
@@ -503,6 +891,12 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
 
       <div className="vault-tabs">
         <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>OVERVIEW</button>
+        <button className={activeTab === 'recurring' ? 'active' : ''} onClick={() => setActiveTab('recurring')}>
+          RECURRING
+          {(schedules.length + savingsPlans.length) > 0 && (
+            <span className="tab-badge">{schedules.length + savingsPlans.length}</span>
+          )}
+        </button>
         <button className={activeTab === 'config' ? 'active' : ''} onClick={() => setActiveTab('config')}>SPENDING LIMITS</button>
         <button className={activeTab === 'vendors' ? 'active' : ''} onClick={() => setActiveTab('vendors')}>VENDORS</button>
       </div>
@@ -577,6 +971,86 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                   <button className="btn-danger"><Unlock size={14}/> EMERGENCY WITHDRAW</button>
                </div>
              </div>
+          </div>
+        )}
+
+        {/* NEW: RECURRING TAB */}
+        {activeTab === 'recurring' && (
+          <div className="recurring-section">
+            <div className="recurring-header">
+              <h2>AUTOMATED PAYMENTS</h2>
+              <p>Manage your recurring payments and savings plans. These run automatically via your Agent Wallet.</p>
+            </div>
+
+            {/* Scheduled Payments */}
+            <div className="recurring-group">
+              <div className="group-header">
+                <Repeat size={16} />
+                <span>SCHEDULED PAYMENTS</span>
+                <span className="group-count">{schedules.length}</span>
+              </div>
+              
+              {schedules.length === 0 ? (
+                <div className="empty-state">
+                  <Repeat size={32} />
+                  <p>No recurring payments scheduled</p>
+                  <span>Tell the AI: "Pay Netflix 15 MNEE every month"</span>
+                </div>
+              ) : (
+                <div className="items-list">
+                  <AnimatePresence>
+                    {schedules.map(schedule => (
+                      <ScheduleItem 
+                        key={schedule.id}
+                        schedule={schedule}
+                        onCancel={handleCancelSchedule}
+                        onEdit={handleEditSchedule}
+                        onTogglePause={handleTogglePause}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+
+            {/* Savings Plans */}
+            <div className="recurring-group">
+              <div className="group-header">
+                <PiggyBank size={16} />
+                <span>SAVINGS PLANS</span>
+                <span className="group-count">{savingsPlans.length}</span>
+              </div>
+              
+              {savingsPlans.length === 0 ? (
+                <div className="empty-state">
+                  <PiggyBank size={32} />
+                  <p>No savings plans active</p>
+                  <span>Tell the AI: "Save 100 MNEE weekly for 6 months"</span>
+                </div>
+              ) : (
+                <div className="items-list">
+                  <AnimatePresence>
+                    {savingsPlans.map(plan => (
+                      <SavingsPlanItem 
+                        key={plan.id}
+                        plan={plan}
+                        onCancel={handleCancelSavingsPlan}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+
+            {/* Agent Wallet Info */}
+            <div className="agent-info-box">
+              <div className="info-icon">⚡</div>
+              <div className="info-content">
+                <strong>AGENT WALLET AUTOMATION</strong>
+                <p>Recurring payments execute automatically from your Agent Wallet - no popups required. 
+                Make sure your Agent Wallet has sufficient balance for upcoming payments.</p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -740,9 +1214,18 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         .vault-tabs { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
         .vault-tabs button {
           background: transparent; border: 2px solid var(--border-color, #ffcc00); padding: 12px 24px; font-weight: 700; font-size: 14px; cursor: pointer; color: var(--text-primary, #ffcc00);
+          display: flex; align-items: center; gap: 8px;
         }
         .vault-tabs button.active { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); transform: translate(2px, 2px); }
         .vault-tabs button:hover:not(.active) { background: var(--bg-secondary, #252525); }
+        .tab-badge {
+          background: #60a5fa;
+          color: white;
+          font-size: 10px;
+          padding: 2px 6px;
+          min-width: 18px;
+          text-align: center;
+        }
 
         .overview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
         
@@ -762,15 +1245,69 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
         }
         .btn-danger:hover { background: var(--accent-red); color: white; border-color: black; }
 
+        /* RECURRING TAB STYLES */
+        .recurring-section { display: flex; flex-direction: column; gap: 24px; }
+        
+        .recurring-header { margin-bottom: 8px; }
+        .recurring-header h2 { font-family: var(--font-pixel); font-size: 20px; margin-bottom: 8px; color: var(--text-primary, #ffcc00); }
+        .recurring-header p { font-size: 13px; color: var(--text-muted, #b38f00); }
+
+        .recurring-group {
+          background: var(--bg-card, #2a2a2a);
+          border: 2px solid var(--border-color, #ffcc00);
+          padding: 20px;
+        }
+
+        .group-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 700;
+          color: var(--text-primary, #ffcc00);
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px dashed var(--border-color, #ffcc00);
+        }
+        .group-count {
+          margin-left: auto;
+          background: var(--border-color, #ffcc00);
+          color: var(--bg-primary, #1a1a1a);
+          padding: 2px 8px;
+          font-size: 12px;
+        }
+
+        .items-list { display: flex; flex-direction: column; gap: 12px; }
+
+        .empty-state {
+          text-align: center;
+          padding: 40px 20px;
+          color: var(--text-muted, #b38f00);
+        }
+        .empty-state p { font-weight: 700; margin: 16px 0 8px; }
+        .empty-state span { font-size: 12px; opacity: 0.7; }
+
+        .agent-info-box {
+          display: flex;
+          gap: 16px;
+          padding: 16px;
+          background: rgba(96, 165, 250, 0.1);
+          border: 2px solid #60a5fa;
+        }
+        .info-icon { font-size: 24px; }
+        .info-content strong { color: #60a5fa; font-size: 12px; display: block; margin-bottom: 4px; }
+        .info-content p { font-size: 12px; color: var(--text-secondary, #e6b800); margin: 0; line-height: 1.5; }
+
         .config-grid { max-width: 600px; }
         .section-block h3 { font-family: var(--font-pixel); font-size: 18px; margin-bottom: 8px; color: var(--text-primary, #ffcc00); }
         .section-block p { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; }
         .limits-list { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
         .info-box { 
-          display: flex; align-items: center; gap: 8px; padding: 12px; 
-          background: rgba(245, 158, 11, 0.1); border: 1px solid var(--accent-amber); 
-          color: var(--accent-amber); font-size: 11px; font-weight: 700; 
+          display: flex; align-items: flex-start; gap: 12px; padding: 16px; 
+          background: rgba(245, 158, 11, 0.1); border: 2px solid var(--accent-amber); 
+          font-size: 12px; line-height: 1.5; color: var(--text-primary, #ffcc00);
         }
+        .info-box strong { font-weight: 700; }
 
         .add-vendor-section { background: var(--bg-secondary); border: 2px solid var(--border-color, #ffcc00); padding: 20px; margin-bottom: 24px; }
         .add-vendor-section h3 { font-family: var(--font-pixel); font-size: 14px; margin-bottom: 16px; color: var(--text-primary, #ffcc00); }
@@ -828,13 +1365,6 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
           background: rgba(0, 204, 102, 0.15); border: 2px solid var(--accent-emerald); color: var(--accent-emerald);
           font-size: 12px; font-weight: 700;
         }
-
-        .info-box { 
-          display: flex; align-items: flex-start; gap: 12px; padding: 16px; 
-          background: rgba(245, 158, 11, 0.1); border: 2px solid var(--accent-amber); 
-          font-size: 12px; line-height: 1.5; color: var(--text-primary, #ffcc00);
-        }
-        .info-box strong { font-weight: 700; }
 
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }

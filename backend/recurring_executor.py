@@ -352,7 +352,6 @@ class RecurringExecutor:
             nonce = self.web3.eth.get_transaction_count(account.address)
             gas_price = self.web3.eth.gas_price
             
-            # First approve savings contract
             approve_tx = self.mnee_contract.functions.approve(
                 SAVINGS_ADDRESS,
                 amount_wei
@@ -367,7 +366,6 @@ class RecurringExecutor:
             approve_hash = self.web3.eth.send_raw_transaction(signed_approve.rawTransaction)
             self.web3.eth.wait_for_transaction_receipt(approve_hash, timeout=120)
             
-            # Now deposit
             nonce += 1
             deposit_tx = self.savings_contract.functions.depositFromAgent(
                 plan_id,
@@ -424,18 +422,13 @@ class RecurringExecutor:
         Decrypt agent wallet private key
         In production, use proper key management (AWS KMS, HashiCorp Vault, etc.)
         """
-        # For hackathon: Simple decryption
-        # In production: Use proper encryption/key management
+     
         try:
             from cryptography.fernet import Fernet
             
-            # Derive key from user address (simplified for hackathon)
-            # In production: Use proper key derivation
-            key = Fernet.generate_key()  # TODO: Use deterministic key derivation
-            
-            # For now, assume key is stored with simple encoding
-            # This should be replaced with proper encryption
-            return encrypted_key  # Placeholder
+            key = Fernet.generate_key() 
+         
+            return encrypted_key 
             
         except Exception as e:
             logger.error(f"Error decrypting key: {e}")
@@ -444,7 +437,7 @@ class RecurringExecutor:
     async def check_low_balances(self):
         """Check for agent wallets with low balance relative to upcoming payments"""
         try:
-            # Get all active users with recurring payments
+          
             users = await self.db.get_users_with_recurring_payments()
             
             for user_address in users:
@@ -452,11 +445,10 @@ class RecurringExecutor:
                 if not agent_wallet:
                     continue
                 
-                # Get upcoming payments in next 7 days
                 upcoming = await self.db.get_upcoming_payments(user_address, days=7)
                 total_needed = sum(p.amount for p in upcoming)
                 
-                # Get current balance
+              
                 balance_wei = self.get_agent_balance(agent_wallet.agent_address)
                 balance = float(self.web3.from_wei(balance_wei, 'ether'))
                 
@@ -500,8 +492,6 @@ class RecurringExecutor:
         except Exception as e:
             logger.error(f"Error cleaning up logs: {e}")
 
-
-# Database interface (to be implemented in database.py)
 class RecurringDatabase:
     """Database interface for recurring payments"""
     
@@ -534,10 +524,9 @@ class RecurringDatabase:
         raise NotImplementedError
 
 
-# Entry point for running as standalone service
 if __name__ == "__main__":
     async def main():
-        from database import Database  # Import your database class
+        from database import Database
         
         db = Database()
         executor = RecurringExecutor(db)
