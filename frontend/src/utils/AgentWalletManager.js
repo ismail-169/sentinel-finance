@@ -122,7 +122,24 @@ class AgentWalletManager {
     return null;
   }
 
-  // Get agent wallet address
+ensureWalletLoaded() {
+  if (this.agentWallet) {
+    return true;
+  }
+  
+  const cached = this.loadFromStorage();
+  if (cached?.privateKey) {
+    try {
+      this.agentWallet = new ethers.Wallet(cached.privateKey);
+      return true; 
+    } catch (e) {
+      console.error('Wallet reconstruction failed:', e);
+    }
+  }
+  
+  return false;
+}
+
   getAddress() {
     if (this.agentWallet) {
       return this.agentWallet.address;
@@ -225,9 +242,10 @@ class AgentWalletManager {
       return { success: false, error: 'No ETH for gas. Fund agent with ETH first.', needsGas: true };
     }
 
-    if (!this.agentWallet) {
-      return { success: false, error: 'Agent wallet not initialized' };
+    if (!this.ensureWalletLoaded()) {
+      return { success: false, error: 'Agent wallet not set up' };
     }
+
 
     try {
       const connectedWallet = this.agentWallet.connect(provider);
@@ -295,9 +313,10 @@ class AgentWalletManager {
    * @returns {Promise<{success: boolean, planId?: number, error?: string}>}
    */
 async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
-    if (!this.agentWallet) {
-      return { success: false, error: 'Agent wallet not initialized' };
+    if (!this.ensureWalletLoaded()) {
+      return { success: false, error: 'Agent wallet not set up' };
     }
+
 
     // Check gas
     const gasCheck = await this.checkGasBalance(provider);
@@ -389,8 +408,8 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
    * @returns {Promise<{success: boolean, error?: string}>}
    */
  async depositToSavings(provider, planId, amount) {
-    if (!this.agentWallet) {
-      return { success: false, error: 'Agent wallet not initialized' };
+    if (!this.ensureWalletLoaded()) {
+      return { success: false, error: 'Agent wallet not set up' };
     }
 
     // Check gas
@@ -532,8 +551,8 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
 
   // Approve savings contract for recurring deposits
   async approveSavingsContract(provider, amount) {
-    if (!this.agentWallet) {
-      return { success: false, error: 'Agent wallet not initialized' };
+   if (!this.ensureWalletLoaded()) {
+      return { success: false, error: 'Agent wallet not set up' };
     }
 
     if (!this.networkConfig.savingsContract) {
@@ -637,8 +656,8 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
   }
   // Sign a message with agent wallet
   async signMessage(message) {
-    if (!this.agentWallet) {
-      throw new Error('Agent wallet not initialized');
+   if (!this.ensureWalletLoaded()) {
+      throw new Error('Agent wallet not set up');
     }
     return this.agentWallet.signMessage(message);
   }
