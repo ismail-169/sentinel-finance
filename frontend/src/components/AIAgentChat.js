@@ -377,7 +377,15 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     return 0;
   }, [agentManager, provider]);
 
-  useEffect(() => { loadAgentBalance(); }, [loadAgentBalance]);
+  useEffect(() => { 
+    loadAgentBalance(); 
+    
+    const balanceInterval = setInterval(() => {
+      loadAgentBalance();
+    }, 10000);
+    
+    return () => clearInterval(balanceInterval);
+  }, [loadAgentBalance]);
 
   useEffect(() => {
     const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
@@ -1152,9 +1160,24 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     setSavingsPlans(localPlans);
     return false;
   };
-  const callClaude = async (userMessage, apiKey) => {
+  const buildConversationHistory = (maxMessages = 10) => {
+    const conversationMessages = messages
+      .filter(m => !m.isSystem)
+      .slice(-maxMessages) 
+      .map(m => ({
+        role: m.isUser ? 'user' : 'assistant',
+        content: m.content
+      }));
+    
+    return conversationMessages;
+  };
+ const callClaude = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
+    
+    const conversationHistory = buildConversationHistory(10);
+    conversationHistory.push({ role: 'user', content: userMessage });
+    
     const response = await fetch(AI_PROVIDERS.claude.endpoint, {
       method: 'POST',
       headers: {
@@ -1167,7 +1190,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
         model: AI_PROVIDERS.claude.model,
         max_tokens: 1024,
         system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
+        messages: conversationHistory
       })
     });
     if (!response.ok) throw new Error('Claude API request failed');
@@ -1175,14 +1198,31 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     return data.content[0].text;
   };
 
-  const callGrok = async (userMessage, apiKey) => {
+ const callGrok = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
+    
+    const conversationHistory = buildConversationHistory(10);
+    const allMessages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: userMessage }
+    ];
+    
     try {
       const response = await fetch(AI_PROVIDERS.grok.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: AI_PROVIDERS.grok.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], max_tokens: 1024, stream: false, temperature: 0.7 })
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${apiKey}` 
+        },
+        body: JSON.stringify({ 
+          model: AI_PROVIDERS.grok.model, 
+          messages: allMessages, 
+          max_tokens: 1024, 
+          stream: false, 
+          temperature: 0.7 
+        })
       });
       if (!response.ok) throw new Error('Grok API request failed');
       const data = await response.json();
@@ -1193,13 +1233,28 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     }
   };
 
-  const callOpenAI = async (userMessage, apiKey) => {
+ const callOpenAI = async (userMessage, apiKey) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
+    
+    const conversationHistory = buildConversationHistory(10);
+    const allMessages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: userMessage }
+    ];
+    
     const response = await fetch(AI_PROVIDERS.openai.endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: AI_PROVIDERS.openai.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], max_tokens: 1024 })
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${apiKey}` 
+      },
+      body: JSON.stringify({ 
+        model: AI_PROVIDERS.openai.model, 
+        messages: allMessages, 
+        max_tokens: 1024 
+      })
     });
     if (!response.ok) throw new Error('OpenAI API request failed');
     const data = await response.json();
