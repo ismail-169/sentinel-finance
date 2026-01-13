@@ -387,11 +387,21 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     return () => clearInterval(balanceInterval);
   }, [loadAgentBalance]);
 
-  useEffect(() => {
-    const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
-    const savedSavings = localStorage.getItem(`sentinel_savings_${account}`);
-    if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
-    if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
+ useEffect(() => {
+    const initializeData = async () => {
+      if (!account) return;
+      
+      const backendLoaded = await loadFromBackend();
+      
+      if (!backendLoaded) {
+        const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
+        const savedSavings = localStorage.getItem(`sentinel_savings_${account}`);
+        if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+        if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
+      }
+    };
+    
+    initializeData();
   }, [account]);
 
   useEffect(() => {
@@ -622,6 +632,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     };
 
     setSchedules(prev => [...prev, newSchedule]);
+    setTimeout(() => syncToBackend(true, false), 500);
     addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${newSchedule.frequency}) via Agent Wallet`, 'schedule');
     return { vendor: newSchedule.vendor, amount: newSchedule.amount, frequency: newSchedule.frequency, nextDate: newSchedule.nextDate };
   };
@@ -686,6 +697,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     };
 
     setSavingsPlans(prev => [...prev, newPlan]);
+    setTimeout(() => syncToBackend(false, true), 500);
     addSystemMessage(`✅ SAVINGS PLAN: "${newPlan.name}" - ${amount} MNEE/${frequency} for ${lockDays} days`, 'savings');
     
     return {
@@ -1035,8 +1047,8 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       addSystemMessage(`🗑️ Savings plan cancelled successfully`, 'info');
     }
   };
-  const syncToBackend = async (syncSchedules = true, syncSavings = true) => {
-    if (!account) return;
+const syncToBackend = async (syncSchedules = true, syncSavings = true) => {
+    if (!account) return false;
     
     try {
       const data = {
@@ -1046,12 +1058,12 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       };
       
       if (syncSchedules) {
-        const localSchedules = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
+        const localSchedules = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
         data.schedules = localSchedules.map(s => ({
           id: s.id,
           user_address: account,
-          agent_address: agentManager?.address || '',
-          vault_address: vaultAddress || '',
+          agent_address: agentManager?.getAddress() || '',
+          vault_address: contract?.target || '',
           payment_type: 'vendor',
           vendor: s.vendor || s.name,
           vendor_address: s.vendorAddress || s.recipient,
@@ -1067,12 +1079,13 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       }
       
       if (syncSavings) {
-        const localPlans = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+        const localPlans = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
         data.savings_plans = localPlans.map(p => ({
           id: p.id,
           user_address: account,
-          agent_address: agentManager?.address || '',
-          vault_address: vaultAddress || '',
+          agent_address: agentManager?.getAddress() || '',
+          vault_address: contract?.target || '',
+          contract_plan_id: p.contractPlanId || null,
           name: p.name,
           amount: parseFloat(p.amount),
           frequency: p.frequency || 'monthly',
@@ -1082,8 +1095,8 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
           next_deposit: p.nextDeposit,
           unlock_date: p.unlockDate,
           target_amount: parseFloat(p.targetAmount) || parseFloat(p.amount) * 12,
-          total_saved: parseFloat(p.totalDeposited) || 0,
-          is_active: p.status === 'active',
+          total_saved: parseFloat(p.totalSaved || p.totalDeposited) || 0,
+          is_active: p.status === 'active' || !p.paused,
           withdrawn: p.withdrawn || false
         }));
       }
@@ -1110,7 +1123,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
   };
 
   const loadFromBackend = async () => {
-    if (!account) return;
+    if (!account) return false;
     
     try {
       const response = await fetch(`${API_URL}/api/v1/recurring/${account}`, {
@@ -1134,10 +1147,11 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
             paused: !s.is_active,
             createdAt: s.created_at,
             executionCount: s.execution_count || 0,
-            lastExecuted: s.last_executed
+            lastExecuted: s.last_executed,
+            useAgentWallet: true
           }));
           setSchedules(transformedSchedules);
-          localStorage.setItem(`schedules_${account}`, JSON.stringify(transformedSchedules));
+          localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(transformedSchedules));
         }
         
         if (data.savingsPlans?.length > 0) {
@@ -1151,24 +1165,27 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
             nextDeposit: p.next_deposit,
             unlockDate: p.unlock_date,
             targetAmount: p.target_amount,
+            totalSaved: p.total_saved,
             totalDeposited: p.total_saved,
             status: p.is_active ? 'active' : 'paused',
+            paused: !p.is_active,
             withdrawn: p.withdrawn,
-            createdAt: p.created_at
+            createdAt: p.created_at,
+            contractPlanId: p.contract_plan_id
           }));
           setSavingsPlans(transformedPlans);
-          localStorage.setItem(`savings_plans_${account}`, JSON.stringify(transformedPlans));
+          localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(transformedPlans));
         }
         
-        console.log('✅ Loaded from backend');
+        console.log('✅ Loaded from backend:', data.schedules?.length || 0, 'schedules,', data.savingsPlans?.length || 0, 'plans');
         return true;
       }
     } catch (error) {
       console.error('Backend load failed, using localStorage:', error);
     }
     
-    const localSchedules = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
-    const localPlans = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+    const localSchedules = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
+    const localPlans = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
     setSchedules(localSchedules);
     setSavingsPlans(localPlans);
     return false;

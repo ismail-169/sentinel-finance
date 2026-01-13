@@ -22,6 +22,7 @@ from passlib.context import CryptContext
 from web3 import Web3
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import structlog
+import uvicorn
 
 from database import (
     init_db,
@@ -117,10 +118,25 @@ if not ABI_PATH.exists():
 # Savings contract ABI
 SAVINGS_ABI_PATH = Path(__file__).parent / "SentinelSavings.json"
 
-REQUEST_COUNT = Counter("sentinel_requests_total", "Total requests", ["method", "endpoint", "status"])
-REQUEST_LATENCY = Histogram("sentinel_request_latency_seconds", "Request latency", ["endpoint"])
-ERROR_COUNT = Counter("sentinel_errors_total", "Total errors", ["type"])
+from prometheus_client import REGISTRY
 
+def get_or_create_metric(metric_class, name, description, labels=None):
+    """Get existing metric or create new one to avoid duplicate registration errors"""
+    try:
+        for collector in REGISTRY._names_to_collectors.values():
+            if hasattr(collector, '_name') and collector._name == name:
+                return collector
+        if labels:
+            return metric_class(name, description, labels)
+        return metric_class(name, description)
+    except Exception:
+        if labels:
+            return metric_class(name, description, labels)
+        return metric_class(name, description)
+
+REQUEST_COUNT = get_or_create_metric(Counter, "sentinel_requests_total", "Total requests", ["method", "endpoint", "status"])
+REQUEST_LATENCY = get_or_create_metric(Histogram, "sentinel_request_latency_seconds", "Request latency", ["endpoint"])
+ERROR_COUNT = get_or_create_metric(Counter, "sentinel_errors_total", "Total errors", ["type"])
 limiter = Limiter(key_func=get_remote_address)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
@@ -1224,11 +1240,11 @@ async def recurring_system_health(request: Request):
         }
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(
-        "api:app",
+        app,
         host="0.0.0.0",
         port=8000,
-        reload=settings.debug,
+        reload=False,
         log_level="info"
     )
+

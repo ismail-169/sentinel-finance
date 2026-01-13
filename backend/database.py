@@ -553,6 +553,8 @@ def update_schedule(schedule_id: str, updates: Dict[str, Any]) -> bool:
         conn.commit()
         
         return cursor.rowcount > 0
+
+
 def get_schedule_by_id(schedule_id: str) -> Optional[Dict[str, Any]]:
     """Get a single schedule by ID"""
     with get_connection() as conn:
@@ -560,6 +562,8 @@ def get_schedule_by_id(schedule_id: str) -> Optional[Dict[str, Any]]:
         cursor.execute("SELECT * FROM recurring_schedules WHERE id = ?", (schedule_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
 def delete_schedule(schedule_id: str) -> bool:
     """Delete a schedule"""
     with get_connection() as conn:
@@ -567,6 +571,7 @@ def delete_schedule(schedule_id: str) -> bool:
         cursor.execute("DELETE FROM recurring_schedules WHERE id = ?", (schedule_id,))
         conn.commit()
         return cursor.rowcount > 0
+
 
 def save_savings_plan(plan: Dict[str, Any]) -> bool:
     """Save or update savings plan"""
@@ -627,6 +632,8 @@ def save_savings_plan(plan: Dict[str, Any]) -> bool:
         
         conn.commit()
         return cursor.rowcount > 0
+
+
 def get_savings_plan_by_id(plan_id: str) -> Optional[Dict[str, Any]]:
     """Get a single savings plan by ID"""
     with get_connection() as conn:
@@ -634,6 +641,7 @@ def get_savings_plan_by_id(plan_id: str) -> Optional[Dict[str, Any]]:
         cursor.execute("SELECT * FROM savings_plans WHERE id = ?", (plan_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
 
 def get_savings_plans(user_address: str, active_only: bool = False) -> List[Dict[str, Any]]:
     """Get all savings plans for user"""
@@ -687,6 +695,8 @@ def update_savings_deposit(plan_id: str, amount: float, next_deposit: Optional[s
         """, (amount, next_deposit, now_iso, now_iso, plan_id))
         conn.commit()
         return cursor.rowcount > 0
+
+
 def update_savings_plan(plan_id: str, updates: Dict[str, Any]) -> bool:
     """Update specific fields of a savings plan"""
     if not updates:
@@ -696,7 +706,7 @@ def update_savings_plan(plan_id: str, updates: Dict[str, Any]) -> bool:
         cursor = conn.cursor()
         now_iso = datetime.utcnow().isoformat()
         
-        # Build dynamic UPDATE query
+    
         set_clauses = []
         values = []
         
@@ -731,6 +741,7 @@ def update_savings_plan(plan_id: str, updates: Dict[str, Any]) -> bool:
         conn.commit()
         
         return cursor.rowcount > 0
+        
 
 def set_plan_contract_id(plan_id: str, contract_plan_id: int) -> bool:
     """Set on-chain contract plan ID"""
