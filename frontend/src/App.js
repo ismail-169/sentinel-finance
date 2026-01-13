@@ -476,15 +476,13 @@ export default function App() {
     }
   }, [account, vaultAddress, selectedNetwork, provider]);
 
-  // Load agent balance function
-  const loadAgentBalance = async (manager) => {
+    const loadAgentBalance = async (manager) => {
     if (manager && provider) {
       const balance = await manager.getBalance(provider);
       setAgentBalance(balance);
     }
   };
 
-  // Refresh agent data
   const refreshAgentData = async () => {
     if (agentManager) {
       await loadAgentBalance(agentManager);

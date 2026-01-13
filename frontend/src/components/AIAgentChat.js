@@ -843,13 +843,66 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       return null;
     }
 
-    addSystemMessage(`⏳ Funding agent wallet with ${amount} MNEE requires 2 confirmations...`, 'info');
-    addSystemMessage(`💡 Use the Agent Wallet panel (bot icon) to fund your agent wallet.`, 'info');
-    
-    return {
-      balance: agentBalance,
-      action: 'FUND_REQUIRED_VIA_PANEL'
-    };
+    if (!signer) {
+      addSystemMessage(`❌ Wallet not connected. Please connect MetaMask first.`, 'danger');
+      return null;
+    }
+
+    try {
+      addSystemMessage(`⏳ Funding agent wallet with ${amount} MNEE...`, 'info');
+      addSystemMessage(`💡 Please confirm the transaction in MetaMask.`, 'info');
+      
+      const MNEE_ADDRESS = '0x250ff89cf1518F42F3A4c927938ED73444491715'; 
+      
+      const ERC20_ABI = [
+        'function transfer(address to, uint256 amount) returns (bool)',
+        'function balanceOf(address account) view returns (uint256)',
+        'function decimals() view returns (uint8)'
+      ];
+      
+      const mneeContract = new ethers.Contract(MNEE_ADDRESS, ERC20_ABI, signer);
+      
+      const userBalance = await mneeContract.balanceOf(await signer.getAddress());
+      const amountWei = ethers.parseUnits(amount.toString(), 6); 
+      
+      if (userBalance < amountWei) {
+        addSystemMessage(`❌ Insufficient MNEE balance. You have ${ethers.formatUnits(userBalance, 6)} MNEE.`, 'danger');
+        return null;
+      }
+      
+      const agentAddress = agentManager.address;
+      addSystemMessage(`📤 Transferring ${amount} MNEE to agent wallet ${agentAddress.slice(0,6)}...${agentAddress.slice(-4)}`, 'info');
+      
+      const tx = await mneeContract.transfer(agentAddress, amountWei);
+      addSystemMessage(`⏳ Transaction submitted. Waiting for confirmation...`, 'info');
+      
+      const receipt = await tx.wait();
+      
+      if (receipt.status === 1) {
+        addSystemMessage(`✅ Successfully funded agent wallet with ${amount} MNEE!`, 'success');
+        
+        await loadAgentBalance();
+        onAgentWalletUpdate && onAgentWalletUpdate();
+        
+        return {
+          success: true,
+          balance: await agentManager.getBalance(provider),
+          txHash: receipt.hash
+        };
+      } else {
+        addSystemMessage(`❌ Transaction failed.`, 'danger');
+        return null;
+      }
+      
+    } catch (err) {
+      console.error('Fund agent error:', err);
+      if (err.code === 'ACTION_REJECTED' || err.code === 4001) {
+        addSystemMessage(`❌ Transaction cancelled by user.`, 'warning');
+      } else {
+        addSystemMessage(`❌ Failed to fund agent: ${err.reason || err.message}`, 'danger');
+      }
+      return null;
+    }
   };
   const fundAgentWithEth = async (amount) => {
     if (!agentManager?.hasWallet()) {

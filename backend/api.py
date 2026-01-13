@@ -1026,7 +1026,7 @@ async def delete_savings_plan_endpoint(
     if not success:
         raise HTTPException(status_code=404, detail="Plan not found")
     return {"success": True, "plan_id": plan_id}
-    class SavingsPlanUpdate(BaseModel):
+class SavingsPlanUpdate(BaseModel):
     amount: Optional[float] = None
     frequency: Optional[str] = None
     execution_time: Optional[str] = None
@@ -1060,7 +1060,7 @@ async def update_savings_plan_endpoint(
         logger.error("savings_plan_update_failed", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-        @app.post("/api/v1/recurring/bulk-delete")
+@app.post("/api/v1/recurring/bulk-delete")
 @limiter.limit("10/minute")
 async def bulk_delete_recurring(
     request: Request,

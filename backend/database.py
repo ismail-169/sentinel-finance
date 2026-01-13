@@ -517,7 +517,6 @@ def update_schedule(schedule_id: str, updates: Dict[str, Any]) -> bool:
         cursor = conn.cursor()
         now_iso = datetime.utcnow().isoformat()
         
-        # Build dynamic UPDATE query
         set_clauses = []
         values = []
         
@@ -544,11 +543,9 @@ def update_schedule(schedule_id: str, updates: Dict[str, Any]) -> bool:
         if not set_clauses:
             return False
         
-        # Always update updated_at
         set_clauses.append("updated_at = ?")
         values.append(now_iso)
         
-        # Add schedule_id for WHERE clause
         values.append(schedule_id)
         
         query = f"UPDATE recurring_schedules SET {', '.join(set_clauses)} WHERE id = ?"
@@ -556,7 +553,7 @@ def update_schedule(schedule_id: str, updates: Dict[str, Any]) -> bool:
         conn.commit()
         
         return cursor.rowcount > 0
-        def get_schedule_by_id(schedule_id: str) -> Optional[Dict[str, Any]]:
+def get_schedule_by_id(schedule_id: str) -> Optional[Dict[str, Any]]:
     """Get a single schedule by ID"""
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -725,11 +722,8 @@ def update_savings_plan(plan_id: str, updates: Dict[str, Any]) -> bool:
         if not set_clauses:
             return False
         
-        # Always update updated_at
         set_clauses.append("updated_at = ?")
         values.append(now_iso)
-        
-        # Add plan_id for WHERE clause
         values.append(plan_id)
         
         query = f"UPDATE savings_plans SET {', '.join(set_clauses)} WHERE id = ?"
