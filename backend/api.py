@@ -858,7 +858,7 @@ async def get_agent_wallet_info(
     if not wallet:
         raise HTTPException(status_code=404, detail="Agent wallet not found")
     
-        return {
+    return {
         "user_address": wallet["user_address"],
         "agent_address": wallet["agent_address"],
         "vault_address": wallet["vault_address"],

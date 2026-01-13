@@ -71,6 +71,9 @@ RESPONSE FORMAT - Always include JSON for actions:
 12. FUND AGENT WITH ETH (FOR GAS): {"action": "fund_agent_eth", "amount": number}
     - Use when user needs to add ETH for gas fees
     - Amount is in ETH (e.g., 0.01)
+13. CHECK VAULT BALANCE: {"action": "vault_balance"}
+    - Use when user asks about their vault/main balance
+    - Shows MNEE balance in the main vault    
 
 USER'S TRUSTED VENDORS:
 ${vendorList}
@@ -85,8 +88,12 @@ ${topUpContext}
 
 IMPORTANT BEHAVIOR:
 - If user wants to schedule a payment but Agent Wallet balance is LOW, ask them to top up first
-- For savings deposits, check if they want one-time or recurring
-- Be conversational and explain vault vs agent wallet routing`;
+- For savings deposits, check if they want one-time or recurring, then after they inform you, process it and also ask them what they would like to name it
+- ETH for gas fees for the agent comes directly from MetaMask wallet (1 confirmation)
+- when a user says fund agent ask him, MNEE or eth for gas.
+- MNEE funding for agent wallet ALWAYS comes from the Vault (2 MetaMask confirmations)
+- Be conversational and if they say they want to fund wallet without stating amount ask the amount and process it, explain vault vs agent wallet routing`;
+
 };
 
 const MessageBubble = ({ message, isUser, isSystem }) => {
@@ -853,115 +860,150 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
   };
 
   const fundAgentWallet = async (amount) => {
-    if (!agentManager) {
-      addSystemMessage(`❌ Agent wallet not initialized. Open Agent Wallet panel first.`, 'danger');
-      return null;
-    }
-    
-    if (!agentManager.hasWallet()) {
-      addSystemMessage(`❌ Agent wallet not set up. Click the bot icon in header to initialize.`, 'danger');
-      return null;
-    }
-
-    if (!signer) {
-      addSystemMessage(`❌ Wallet not connected. Please connect MetaMask first.`, 'danger');
-      return null;
-    }
-
-    try {
-      addSystemMessage(`⏳ Funding agent wallet with ${amount} MNEE...`, 'info');
-      addSystemMessage(`💡 Please confirm the transaction in MetaMask.`, 'info');
-      
-    
-      const agentAddress = agentManager.getAddress();
-      
-      if (!agentAddress) {
-        addSystemMessage(`❌ Could not get agent wallet address.`, 'danger');
-        return null;
-      }
-      
+  if (!agentManager) {
+    addSystemMessage(`❌ Agent wallet not initialized. Open Agent Wallet panel first.`, 'danger');
+    return null;
+  }
   
-      const MNEE_ADDRESS = agentManager.networkConfig?.mneeToken || '0x250ff89cf1518F42F3A4c927938ED73444491715';
-      
-     
-      const ERC20_ABI = [
-        'function transfer(address to, uint256 amount) returns (bool)',
-        'function balanceOf(address account) view returns (uint256)'
-      ];
-      
-      const mneeContract = new ethers.Contract(MNEE_ADDRESS, ERC20_ABI, signer);
-      
-      
-      const userAddress = await signer.getAddress();
-      const userBalance = await mneeContract.balanceOf(userAddress);
-      const amountWei = ethers.parseUnits(amount.toString(), 18); 
-      
-      if (userBalance < amountWei) {
-        const formattedBalance = ethers.formatUnits(userBalance, 18);
-        addSystemMessage(`❌ Insufficient MNEE balance. You have ${parseFloat(formattedBalance).toFixed(2)} MNEE.`, 'danger');
-        return null;
-      }
-      
-      const shortAddr = agentAddress.slice(0, 6) + '...' + agentAddress.slice(-4);
-      addSystemMessage(`📤 Transferring ${amount} MNEE to agent wallet ${shortAddr}`, 'info');
-      
-      const tx = await mneeContract.transfer(agentAddress, amountWei);
-      addSystemMessage(`⏳ Transaction submitted. Waiting for confirmation...`, 'info');
-      
-      const receipt = await tx.wait();
-      
-      if (receipt.status === 1) {
-        addSystemMessage(`✅ Successfully funded agent wallet with ${amount} MNEE!`, 'success');
-        
-       
-        await loadAgentBalance();
-        onAgentWalletUpdate && onAgentWalletUpdate();
-        
-        return {
-          success: true,
-          balance: await agentManager.getBalance(provider),
-          txHash: receipt.hash
-        };
-      } else {
-        addSystemMessage(`❌ Transaction failed.`, 'danger');
-        return null;
-      }
-      
-    } catch (err) {
-      console.error('Fund agent error:', err);
-      if (err.code === 'ACTION_REJECTED' || err.code === 4001) {
-        addSystemMessage(`❌ Transaction cancelled by user.`, 'warning');
-      } else {
-        addSystemMessage(`❌ Failed to fund agent: ${err.reason || err.message}`, 'danger');
-      }
+  if (!agentManager.hasWallet()) {
+    addSystemMessage(`❌ Agent wallet not set up. Click the bot icon in header to initialize.`, 'danger');
+    return null;
+  }
+
+  if (!signer || !contract) {
+    addSystemMessage(`❌ Wallet or vault not connected.`, 'danger');
+    return null;
+  }
+
+  try {
+    const agentAddress = agentManager.getAddress();
+    if (!agentAddress) {
+      addSystemMessage(`❌ Could not get agent wallet address.`, 'danger');
       return null;
     }
-  };
-  const fundAgentWithEth = async (amount) => {
-    if (!agentManager?.hasWallet()) {
-      addSystemMessage(`❌ Agent wallet not set up.`, 'danger');
-      return null;
-    }
-    if (!signer) {
-      addSystemMessage(`❌ Wallet not connected.`, 'danger');
-      return null;
-    }
+
+    const amountWei = ethers.parseUnits(amount.toString(), 18);
+
+    let vaultBal;
     try {
-      addSystemMessage(`⏳ Confirm ETH transfer in MetaMask...`, 'info');
-      const result = await agentManager.fundWithEth(signer, amount);
-      if (result.success) {
-        addSystemMessage(`✅ Sent ${amount} ETH to agent wallet for gas`, 'success');
-        await loadAgentBalance();
-        onAgentWalletUpdate && onAgentWalletUpdate();
-        return result;
-      } else {
-        addSystemMessage(`❌ ${result.error}`, 'danger');
-      }
-    } catch (err) {
-      addSystemMessage(`❌ ${err.message}`, 'danger');
+      vaultBal = await contract.getVaultBalance();
+    } catch (e) {
+      addSystemMessage(`❌ Could not get vault balance: ${e.message}`, 'danger');
+      return null;
+    }
+
+    const vaultBalFormatted = parseFloat(ethers.formatUnits(vaultBal, 18)).toFixed(2);
+
+    if (vaultBal < amountWei) {
+      addSystemMessage(`❌ Insufficient vault balance. You have ${vaultBalFormatted} MNEE in vault.`, 'danger');
+      addSystemMessage(`💡 Deposit more MNEE to your vault first using the DEPOSIT button.`, 'info');
+      return null;
+    }
+
+    addSystemMessage(`⏳ Step 1/2: Withdrawing ${amount} MNEE from vault...`, 'info');
+    addSystemMessage(`💡 Please confirm the withdrawal in MetaMask.`, 'info');
+    
+    const withdrawTx = await contract.withdraw(amountWei);
+    await withdrawTx.wait();
+    addSystemMessage(`✅ Withdrawn from vault.`, 'success');
+
+    const MNEE_ADDRESS = agentManager.networkConfig?.mneeToken || '0x250ff89cf1518F42F3A4c927938ED73444491715';
+    const ERC20_ABI = [
+      'function transfer(address to, uint256 amount) returns (bool)',
+      'function balanceOf(address account) view returns (uint256)'
+    ];
+    const mneeContract = new ethers.Contract(MNEE_ADDRESS, ERC20_ABI, signer);
+
+    addSystemMessage(`⏳ Step 2/2: Transferring to agent wallet...`, 'info');
+    addSystemMessage(`💡 Please confirm the transfer in MetaMask.`, 'info');
+    
+    const transferTx = await mneeContract.transfer(agentAddress, amountWei);
+    const receipt = await transferTx.wait();
+    
+    if (receipt.status === 1) {
+      addSystemMessage(`✅ Funded agent wallet with ${amount} MNEE from vault!`, 'success');
+      await loadAgentBalance();
+      onAgentWalletUpdate && onAgentWalletUpdate();
+      onTransactionCreated && onTransactionCreated();
+      return { 
+        success: true, 
+        balance: await agentManager.getBalance(provider), 
+        txHash: receipt.hash,
+        source: 'vault'
+      };
+    } else {
+      addSystemMessage(`❌ Transfer transaction failed.`, 'danger');
+      return null;
+    }
+    
+  } catch (err) {
+    console.error('Fund agent error:', err);
+    if (err.code === 'ACTION_REJECTED' || err.code === 4001) {
+      addSystemMessage(`❌ Transaction cancelled by user.`, 'warning');
+    } else {
+      addSystemMessage(`❌ Failed to fund agent: ${err.reason || err.message}`, 'danger');
     }
     return null;
-  };
+  }
+};
+ const fundAgentWithEth = async (amount) => {
+  if (!agentManager?.hasWallet()) {
+    addSystemMessage(`❌ Agent wallet not set up.`, 'danger');
+    return null;
+  }
+  if (!signer || !provider) {
+    addSystemMessage(`❌ Wallet not connected.`, 'danger');
+    return null;
+  }
+  
+  try {
+   
+    const userAddress = await signer.getAddress();
+    const ethBalance = await provider.getBalance(userAddress);
+    const amountWei = ethers.parseEther(amount.toString());
+    
+    const feeData = await provider.getFeeData();
+    const gasPrice = feeData.gasPrice || ethers.parseUnits('20', 'gwei');
+    const estimatedGas = BigInt(21000) * gasPrice;
+    const totalNeeded = amountWei + estimatedGas;
+    
+    if (ethBalance < totalNeeded) {
+      const ethBalFormatted = parseFloat(ethers.formatEther(ethBalance)).toFixed(4);
+      const neededFormatted = parseFloat(ethers.formatEther(totalNeeded)).toFixed(4);
+      addSystemMessage(`❌ Insufficient ETH in MetaMask wallet.`, 'danger');
+      addSystemMessage(`💰 You have: ${ethBalFormatted} ETH`, 'info');
+      addSystemMessage(`💰 You need: ~${neededFormatted} ETH (${amount} + gas)`, 'info');
+      addSystemMessage(`💡 Get Sepolia ETH from: https://cloud.google.com/application/web3/faucet/ethereum/sepolia`, 'info');
+      return null;
+    }
+    
+    addSystemMessage(`⏳ Sending ${amount} ETH for gas from MetaMask...`, 'info');
+    addSystemMessage(`💡 Confirm the ETH transfer in MetaMask.`, 'info');
+    
+    const result = await agentManager.fundWithEth(signer, amount);
+    
+    if (result.success) {
+      addSystemMessage(`✅ Sent ${amount} ETH to agent wallet for gas!`, 'success');
+      const newEthBal = await agentManager.getEthBalance(provider);
+      addSystemMessage(`⛽ Agent ETH balance: ${parseFloat(newEthBal).toFixed(4)} ETH`, 'info');
+      await loadAgentBalance();
+      onAgentWalletUpdate && onAgentWalletUpdate();
+      return result;
+    } else {
+      addSystemMessage(`❌ ${result.error}`, 'danger');
+    }
+  } catch (err) {
+    console.error('Fund ETH error:', err);
+    if (err.code === 'ACTION_REJECTED' || err.code === 4001) {
+      addSystemMessage(`❌ Transaction cancelled.`, 'warning');
+    } else if (err.message?.includes('insufficient funds')) {
+      addSystemMessage(`❌ Insufficient ETH for transfer + gas fees.`, 'danger');
+    } else {
+      addSystemMessage(`❌ ${err.reason || err.message}`, 'danger');
+    }
+  }
+  return null;
+};
   const withdrawFromAgent = async (amount) => {
     if (!agentManager || !agentManager.hasWallet()) {
       addSystemMessage(`❌ Agent wallet not available.`, 'danger');
@@ -1414,6 +1456,35 @@ case 'fund_agent_eth':
               agentWallet: balanceResult
             });
             break;
+
+          case 'vault_balance':
+        try {
+          if (!contract) {
+            addSystemMessage(`❌ Vault not connected.`, 'danger');
+            break;
+          }
+          const vaultBal = await contract.getVaultBalance();
+          const formatted = ethers.formatUnits(vaultBal, 18);
+          const balanceValue = parseFloat(formatted).toFixed(2);
+          
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            content: aiResponse,
+            isUser: false,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            provider: AI_PROVIDERS[selectedProvider].name,
+            vaultInfo: {
+              balance: balanceValue,
+              action: 'VAULT_BALANCE_CHECKED'
+            }
+          }]);
+          
+          addSystemMessage(`💰 VAULT BALANCE: ${balanceValue} MNEE`, 'success');
+        } catch (err) {
+          console.error('Vault balance error:', err);
+          addSystemMessage(`❌ Could not get vault balance: ${err.message}`, 'danger');
+        }
+        break;  
 
           case 'confirm_topup':
             await fundAgentWallet(intent.amount);
