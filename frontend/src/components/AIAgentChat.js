@@ -860,26 +860,38 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       addSystemMessage(`⏳ Funding agent wallet with ${amount} MNEE...`, 'info');
       addSystemMessage(`💡 Please confirm the transaction in MetaMask.`, 'info');
       
-      const MNEE_ADDRESS = '0x250ff89cf1518F42F3A4c927938ED73444491715'; 
+    
+      const agentAddress = agentManager.getAddress();
       
+      if (!agentAddress) {
+        addSystemMessage(`❌ Could not get agent wallet address.`, 'danger');
+        return null;
+      }
+      
+  
+      const MNEE_ADDRESS = agentManager.networkConfig?.mneeToken || '0x250ff89cf1518F42F3A4c927938ED73444491715';
+      
+     
       const ERC20_ABI = [
         'function transfer(address to, uint256 amount) returns (bool)',
-        'function balanceOf(address account) view returns (uint256)',
-        'function decimals() view returns (uint8)'
+        'function balanceOf(address account) view returns (uint256)'
       ];
       
       const mneeContract = new ethers.Contract(MNEE_ADDRESS, ERC20_ABI, signer);
       
-      const userBalance = await mneeContract.balanceOf(await signer.getAddress());
-      const amountWei = ethers.parseUnits(amount.toString(), 6); 
+      
+      const userAddress = await signer.getAddress();
+      const userBalance = await mneeContract.balanceOf(userAddress);
+      const amountWei = ethers.parseUnits(amount.toString(), 18); 
       
       if (userBalance < amountWei) {
-        addSystemMessage(`❌ Insufficient MNEE balance. You have ${ethers.formatUnits(userBalance, 6)} MNEE.`, 'danger');
+        const formattedBalance = ethers.formatUnits(userBalance, 18);
+        addSystemMessage(`❌ Insufficient MNEE balance. You have ${parseFloat(formattedBalance).toFixed(2)} MNEE.`, 'danger');
         return null;
       }
       
-      const agentAddress = agentManager.address;
-      addSystemMessage(`📤 Transferring ${amount} MNEE to agent wallet ${agentAddress.slice(0,6)}...${agentAddress.slice(-4)}`, 'info');
+      const shortAddr = agentAddress.slice(0, 6) + '...' + agentAddress.slice(-4);
+      addSystemMessage(`📤 Transferring ${amount} MNEE to agent wallet ${shortAddr}`, 'info');
       
       const tx = await mneeContract.transfer(agentAddress, amountWei);
       addSystemMessage(`⏳ Transaction submitted. Waiting for confirmation...`, 'info');
@@ -889,6 +901,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       if (receipt.status === 1) {
         addSystemMessage(`✅ Successfully funded agent wallet with ${amount} MNEE!`, 'success');
         
+       
         await loadAgentBalance();
         onAgentWalletUpdate && onAgentWalletUpdate();
         
