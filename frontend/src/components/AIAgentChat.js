@@ -137,7 +137,10 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
       </div>
       
       <div className="bubble-content">
-        <div className="message-text">{message.content}</div>
+       <div className="message-text">
+            {message.content}
+            {message.isStreaming && <span className="streaming-cursor">▌</span>}
+          </div>
         
         {message.payment && (
           <div className={`payment-receipt ${message.payment.status}`}>
@@ -388,6 +391,7 @@ export default function AIAgentChat({
   const [agentEthBalance, setAgentEthBalance] = useState('0');
   const [withdrawingPlanId, setWithdrawingPlanId] = useState(null);
   const messagesEndRef = useRef(null);
+  const [streamingMessageId, setStreamingMessageId] = useState(null);
   const [pendingTopUp, setPendingTopUp] = useState(null);
   const [lastBalanceCheck, setLastBalanceCheck] = useState(0);
   const executionTimerRef = useRef(null);
@@ -531,6 +535,14 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
                 const result = await agentManager.depositToSavings(provider, plan.contractPlanId, plan.amount.toString());
                 if (result.success) {
                   addSystemMessage(`✅ DEPOSITED: ${plan.amount} MNEE to savings`, 'success');
+                  
+                  try {
+                    const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
+                    const synced = await syncSavingsWithBlockchain(account, provider, agentManager?.networkConfig?.savingsContract);
+                    if (synced) {
+                      setSavingsPlans(synced.plans);
+                    }
+                  } catch (e) {}
                 }
               } catch (err) {
                 addSystemMessage(`❌ Deposit failed: ${err.message}`, 'danger');
@@ -563,8 +575,6 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
   }, [schedules, savingsPlans, agentManager, provider, loadAgentBalance, onAgentWalletUpdate]);
 
   useEffect(() => {
-    if (hasInitialized) return;
-    
     const vendorNames = trustedVendors.map(v => v.name).filter(Boolean).slice(0, 5);
     const vendorList = vendorNames.length > 0 
       ? `\n\nTRUSTED VENDORS:\n${vendorNames.join(', ')}${trustedVendors.length > 5 ? '...' : ''}`
@@ -574,15 +584,20 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       ? `\n\n⚡ AGENT WALLET: ACTIVE (${agentBalance} MNEE)`
       : '\n\n💡 TIP: Set up Agent Wallet for automated payments!';
     
-    setMessages([{
-      id: 1,
-      content: `SENTINEL AI ONLINE.\n\nCOMMANDS:\n> "PAY $50 TO [VENDOR]" - Instant payment (vault)\n> "PAY $X TO [VENDOR] EVERY MONTH" - Recurring (agent)\n> "SAVE $X EVERY WEEK FOR Y DAYS" - Savings plan\n> "FUND AGENT WITH $X" - Load agent wallet\n> "SHOW SCHEDULES" - View scheduled payments${vendorList}${agentStatus}`,
-      isUser: false,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
-    
-    if (trustedVendors.length > 0 || hasInitialized === false) {
+    const welcomeContent = `SENTINEL AI ONLINE.\n\nCOMMANDS:\n> "PAY $50 TO [VENDOR]" - Instant payment (vault)\n> "PAY $X TO [VENDOR] EVERY MONTH" - Recurring (agent)\n> "SAVE $X EVERY WEEK FOR Y DAYS" - Savings plan\n> "FUND AGENT WITH $X" - Load agent wallet\n> "SHOW SCHEDULES" - View scheduled payments${vendorList}${agentStatus}`;
+
+    if (!hasInitialized) {
+      setMessages([{
+        id: 1,
+        content: welcomeContent,
+        isUser: false,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
       setHasInitialized(true);
+    } else {
+      setMessages(prev => prev.map(m => 
+        m.id === 1 ? { ...m, content: welcomeContent } : m
+      ));
     }
   }, [trustedVendors, hasInitialized, agentManager, agentBalance]);
 
@@ -737,9 +752,21 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
         if (result.success) {
           contractPlanId = result.planId;
           depositSucceeded = true; 
-          addSystemMessage(`✅ On-chain savings plan created${contractPlanId ? ` (ID: ${contractPlanId})` : ''}`, 'success');
+         addSystemMessage(`✅ On-chain savings plan created${contractPlanId ? ` (ID: ${contractPlanId})` : ''}`, 'success');
           await loadAgentBalance();
           onAgentWalletUpdate && onAgentWalletUpdate();
+          
+          setTimeout(async () => {
+            try {
+              const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
+              const synced = await syncSavingsWithBlockchain(account, provider, agentManager?.networkConfig?.savingsContract);
+              if (synced) {
+                setSavingsPlans(synced.plans);
+              }
+            } catch (e) {
+              console.warn('Post-creation sync failed:', e);
+            }
+          }, 2000); 
         } else {
           addSystemMessage(`⚠️ On-chain creation failed: ${result.error}. Saving locally.`, 'warning');
         }
@@ -1401,13 +1428,12 @@ const loadFromBackend = async () => {
     
     return conversationMessages;
   };
- const callClaude = async (userMessage, apiKey) => {
+ const callClaude = async (userMessage, apiKey, onChunk) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
     
-    const conversationHistory = buildConversationHistory(10);
-    conversationHistory.push({ role: 'user', content: userMessage });
-    
+    const conversationHistory = buildConversationHistory(5);
+
     const response = await fetch(AI_PROVIDERS.claude.endpoint, {
       method: 'POST',
       headers: {
@@ -1418,56 +1444,116 @@ const loadFromBackend = async () => {
       },
       body: JSON.stringify({
         model: AI_PROVIDERS.claude.model,
-        max_tokens: 1024,
+        max_tokens: 512,
         system: systemPrompt,
-        messages: conversationHistory
+        messages: [
+          ...conversationHistory,
+          { role: 'user', content: userMessage }
+        ],
+        stream: true
       })
     });
-    if (!response.ok) throw new Error('Claude API request failed');
-    const data = await response.json();
-    return data.content[0].text;
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `API error: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+      for (const line of lines) {
+        const data = line.slice(6);
+        if (data.trim() === '') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'content_block_delta') {
+            const content = parsed.delta?.text || '';
+            if (content) {
+              fullResponse += content;
+              onChunk && onChunk(fullResponse);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    return fullResponse;
   };
 
- const callGrok = async (userMessage, apiKey) => {
+ const callGrok = async (userMessage, apiKey, onChunk) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
     
-    const conversationHistory = buildConversationHistory(10);
+    const conversationHistory = buildConversationHistory(5);
     const allMessages = [
       { role: 'system', content: systemPrompt },
       ...conversationHistory,
       { role: 'user', content: userMessage }
     ];
-    
-    try {
-      const response = await fetch(AI_PROVIDERS.grok.endpoint, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${apiKey}` 
-        },
-        body: JSON.stringify({ 
-          model: AI_PROVIDERS.grok.model, 
-          messages: allMessages, 
-          max_tokens: 1024, 
-          stream: false, 
-          temperature: 0.7 
-        })
-      });
-      if (!response.ok) throw new Error('Grok API request failed');
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } catch (err) {
-      if (err.name === 'TypeError' && err.message.includes('fetch')) throw new Error('Network error / CORS');
-      throw err;
+
+    const response = await fetch(AI_PROVIDERS.grok.endpoint, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${apiKey}` 
+      },
+      body: JSON.stringify({ 
+        model: AI_PROVIDERS.grok.model, 
+        messages: allMessages, 
+        max_tokens: 512,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `API error: ${response.status}`);
     }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+      for (const line of lines) {
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content || '';
+          if (content) {
+            fullResponse += content;
+            onChunk && onChunk(fullResponse);
+          }
+        } catch (e) {}
+      }
+    }
+
+    return fullResponse;
   };
 
- const callOpenAI = async (userMessage, apiKey) => {
+ const callOpenAI = async (userMessage, apiKey, onChunk) => {
     const hasAgent = agentManager && agentManager.hasWallet();
     const systemPrompt = getSystemPrompt(trustedVendors, schedules, savingsPlans, hasAgent, agentBalance, pendingTopUp);
     
-    const conversationHistory = buildConversationHistory(10);
+    const conversationHistory = buildConversationHistory(5);
     const allMessages = [
       { role: 'system', content: systemPrompt },
       ...conversationHistory,
@@ -1483,23 +1569,54 @@ const loadFromBackend = async () => {
       body: JSON.stringify({ 
         model: AI_PROVIDERS.openai.model, 
         messages: allMessages, 
-        max_tokens: 1024 
+        max_tokens: 512,
+        stream: true
       })
     });
-    if (!response.ok) throw new Error('OpenAI API request failed');
-    const data = await response.json();
-    return data.choices[0].message.content;
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `API error: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+      for (const line of lines) {
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content || '';
+          if (content) {
+            fullResponse += content;
+            onChunk && onChunk(fullResponse);
+          }
+        } catch (e) {}
+      }
+    }
+
+    return fullResponse;
   };
 
-  const callAI = async (userMessage) => {
+  const callAI = async (userMessage, onChunk) => {
     const apiKey = getApiKey(selectedProvider);
-    if (!apiKey) throw new Error(`No API key for ${AI_PROVIDERS[selectedProvider].name}`);
-
+    if (!apiKey) throw new Error('No API key found');
+    
     switch (selectedProvider) {
-      case 'claude': return await callClaude(userMessage, apiKey);
-      case 'grok': return await callGrok(userMessage, apiKey);
-      case 'openai': return await callOpenAI(userMessage, apiKey);
-      default: throw new Error('Unknown provider');
+      case 'claude': return await callClaude(userMessage, apiKey, onChunk);
+      case 'grok': return await callGrok(userMessage, apiKey, onChunk);
+      case 'openai': return await callOpenAI(userMessage, apiKey, onChunk);
+      default: return await callGrok(userMessage, apiKey, onChunk);
     }
   };
 
@@ -1518,10 +1635,38 @@ const loadFromBackend = async () => {
 
     setIsLoading(true);
 
-    try {
-      const aiResponse = await callAI(userMessage);
+   try {
+      const streamId = `stream_${Date.now()}`;
+      setStreamingMessageId(streamId);
+      
+      setMessages(prev => [...prev, {
+        id: streamId,
+        content: '...',
+        isUser: false,
+        isStreaming: true,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        provider: AI_PROVIDERS[selectedProvider].name
+      }]);
+
+      const aiResponse = await callAI(userMessage, (partialResponse) => {
+        setMessages(prev => prev.map(m => 
+          m.id === streamId 
+            ? { ...m, content: partialResponse.replace(/\{[\s\S]*?"action"[\s\S]*?\}/, '').trim() || '...' }
+            : m
+        ));
+      });
+
+      setMessages(prev => prev.map(m => 
+        m.id === streamId ? { ...m, isStreaming: false } : m
+      ));
+      setStreamingMessageId(null);
+
       const intent = parseAIResponse(aiResponse);
       const cleanResponse = aiResponse.replace(/\{[\s\S]*?"action"[\s\S]*?\}/, '').trim();
+      
+      setMessages(prev => prev.map(m => 
+        m.id === streamId ? { ...m, content: cleanResponse || 'Done!' } : m
+      ));
       
       if (intent) {
         switch (intent.action) {
@@ -1879,6 +2024,19 @@ case 'fund_agent_eth':
         @media (max-width: 1024px) { .ai-wrapper { flex-direction: column; } .panel-wrapper { width: 100% !important; height: 300px; } .schedule-panel { width: 100%; } }
         @media (max-width: 768px) { .ai-wrapper { height: calc(100vh - 140px); min-height: 400px; } .chat-header { padding: 10px 14px; flex-wrap: wrap; gap: 10px; } .terminal-header { font-size: 10px; } .select-btn { padding: 6px 10px; font-size: 11px; } .message-area { padding: 14px; } .message-bubble { max-width: 92%; padding: 10px 12px; } .message-text { font-size: 12px; } .input-controls { padding: 12px; } .input-controls input { padding: 12px; font-size: 14px; } .input-controls button { padding: 12px 16px; } }
         @media (max-width: 480px) { .header-actions { gap: 8px; } .schedule-toggle { padding: 6px; } .terminal-header span { display: none; } .agent-indicator { display: none; } }
+        .streaming-cursor {
+          display: inline;
+          animation: blink 0.7s infinite;
+          color: var(--text-primary, #ffcc00);
+          font-weight: bold;
+        }
+        @keyframes blink {
+          0%, 49% { opacity: 1; }
+          50%, 100% { opacity: 0; }
+        }
+        .message-bubble.streaming {
+          border-color: var(--accent-color, #60a5fa);
+        }
       `}</style>
     </div>
   );
