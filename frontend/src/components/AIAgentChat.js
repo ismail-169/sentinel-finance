@@ -440,7 +440,12 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     
     return () => clearInterval(balanceInterval);
   }, [loadAgentBalance]);
-
+ useEffect(() => {
+    if (agentManager && trustedVendors.length > 0) {
+      agentManager.setTrustedVendors(trustedVendors);
+      console.log('✅ Synced', trustedVendors.length, 'trusted vendors to agent wallet');
+    }
+  }, [agentManager, trustedVendors]);
    useEffect(() => {
     const initializeData = async () => {
       if (!account) return;

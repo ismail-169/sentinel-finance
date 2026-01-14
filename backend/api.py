@@ -583,6 +583,32 @@ async def list_vendors(
 ):
     return {"vendors": get_vendors(trusted_only, wallet.get("wallet_address"))}
 
+
+@app.post("/api/v1/vendors")
+@limiter.limit("20/minute")
+async def create_vendor(
+    request: Request,
+    req: VendorWithNameRequest,
+    auth: bool = Depends(verify_api_key),
+    wallet: dict = Depends(get_wallet_context)
+):
+    """Create or update a vendor (alias for /vendors/add)"""
+    try:
+        upsert_vendor(req.address, req.name, req.trusted, wallet.get("wallet_address"))
+        logger.info("vendor_created", address=req.address, name=req.name)
+        return {
+            "success": True,
+            "vendor": {
+                "address": req.address,
+                "name": req.name,
+                "trusted": req.trusted
+            }
+        }
+    except Exception as e:
+        logger.error("create_vendor_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))    
+
+
 @app.get("/api/v1/vendors/search")
 @limiter.limit(settings.rate_limit)
 async def search_vendors(
