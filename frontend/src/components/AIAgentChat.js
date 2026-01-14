@@ -1375,6 +1375,8 @@ const loadFromBackend = async () => {
         console.log('✅ Loaded from backend:', backendSchedules.length, 'schedules,', backendPlans.length, 'plans');
         if (localOnlySchedules.length || localOnlyPlans.length) {
           console.log('📦 Kept local-only:', localOnlySchedules.length, 'schedules,', localOnlyPlans.length, 'plans');
+          console.log('🔄 Syncing local-only items to backend...');
+          syncToBackend(localOnlySchedules.length > 0, localOnlyPlans.length > 0);
         }
         return true;
       }
