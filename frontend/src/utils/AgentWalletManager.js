@@ -38,12 +38,51 @@ class AgentWalletManager {
       this.trustedDestinations.add(this.vaultAddress);
     }
     
-    // Trust the savings contract
+// Trust the savings contract
     if (networkConfig?.savingsContract) {
       this.trustedDestinations.add(networkConfig.savingsContract.toLowerCase());
     }
   }
 
+  /**
+   * Get network-aware transaction options
+   * Testnets use legacy gasPrice, mainnet uses EIP-1559
+   * @param {ethers.Provider} provider - Network provider
+   * @param {number} gasLimit - Gas limit for transaction
+   * @returns {Promise<Object>} Transaction options
+   */
+  async getTransactionOptions(provider, gasLimit = 100000) {
+    const txOptions = { gasLimit };
+    
+    // Testnets (Sepolia, Goerli) have issues with EIP-1559 estimation
+    // Use legacy gas pricing for them
+    if (this.networkConfig?.isTestnet) {
+      try {
+        const feeData = await provider.getFeeData();
+        // Use gasPrice for legacy transactions
+        txOptions.gasPrice = feeData.gasPrice || ethers.parseUnits('10', 'gwei');
+      } catch (e) {
+        // Fallback to safe default
+        txOptions.gasPrice = ethers.parseUnits('10', 'gwei');
+      }
+    }
+    // Mainnet: don't set gasPrice, let ethers.js use EIP-1559 automatically
+    // This gives better gas estimation and priority fees
+    
+    return txOptions;
+  }
+
+  /**
+   * Check if error is "already known" (tx in mempool)
+   * @param {Error} error - The error to check
+   * @returns {boolean}
+   */
+  isAlreadyKnownError(error) {
+    const msg = error?.message?.toLowerCase() || '';
+    return msg.includes('already known') || 
+           msg.includes('nonce too low') ||
+           msg.includes('replacement transaction underpriced');
+  }
   // Signing message for deterministic wallet generation
   getSigningMessage() {
     return `Sentinel Finance Agent Wallet Authorization\n\nThis signature creates your Agent Wallet for automated payments.\n\nWallet: ${this.userAddress}\nTimestamp: SENTINEL_AGENT_V1`;
@@ -271,7 +310,8 @@ ensureWalletLoaded() {
       }
 
       // Execute transfer
-      const tx = await mneeContract.transfer(to, amountWei);
+     const txOptions = await this.getTransactionOptions(provider);
+      const tx = await mneeContract.transfer(to, amountWei, txOptions);
       const receipt = await tx.wait();
 
       return {
@@ -284,6 +324,20 @@ ensureWalletLoaded() {
 
     } catch (error) {
       console.error('Send MNEE failed:', error);
+      
+      // "already known" means tx is in mempool - may still succeed
+      if (this.isAlreadyKnownError(error)) {
+        console.log('Transaction already in mempool, treating as pending success');
+        return {
+          success: true,
+          txHash: 'pending',
+          to,
+          amount,
+          reason,
+          note: 'Transaction already submitted'
+        };
+      }
+      
       return { 
         success: false, 
         error: error.reason || error.message || 'Transaction failed' 
@@ -352,8 +406,10 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       }
 
       // Approve savings contract
-      const approveTx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei);
+    const approveTxOptions = await this.getTransactionOptions(provider);
+      const approveTx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei, approveTxOptions);
       await approveTx.wait();
+
 
       // Create plan with deposit
       const savingsContract = new ethers.Contract(
@@ -362,12 +418,14 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         connectedWallet
       );
 
+      const createTxOptions = await this.getTransactionOptions(provider, 300000); 
       const createTx = await savingsContract.createPlanWithDeposit(
-        this.vaultAddress,  // Funds can ONLY withdraw to vault
+        this.vaultAddress,  
         name,
         lockDays,
         isRecurring,
-        amountWei
+        amountWei,
+        createTxOptions
       );
       
       const receipt = await createTx.wait();
@@ -469,7 +527,8 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       }
 
       // Approve savings contract
-      const approveTx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei);
+     const approveTxOptions = await this.getTransactionOptions(provider);
+      const approveTx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei, approveTxOptions);
       await approveTx.wait();
 
       // Deposit to plan using depositFromAgent
@@ -479,10 +538,12 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         connectedWallet
       );
 
+     const depositTxOptions = await this.getTransactionOptions(provider, 150000);
       const depositTx = await savingsContract.depositFromAgent(
         planId,
         amountWei,
-        this.agentWallet.address
+        this.agentWallet.address,
+        depositTxOptions
       );
       
       const receipt = await depositTx.wait();
@@ -591,7 +652,8 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       }
 
       // Execute withdrawal - funds go to vault automatically
-      const tx = await savingsContract.withdraw(planId);
+    const txOptions = await this.getTransactionOptions(provider, 150000);
+      const tx = await savingsContract.withdraw(planId, txOptions);
       const receipt = await tx.wait();
 
       return {
@@ -636,7 +698,8 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         return { success: false, error: 'No ETH for gas', needsGas: true };
       }
 
-      const tx = await savingsContract.cancelPlan(planId);
+      const txOptions = await this.getTransactionOptions(provider, 150000);
+      const tx = await savingsContract.cancelPlan(planId, txOptions);
       const receipt = await tx.wait();
 
       return {
@@ -698,8 +761,9 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         connectedWallet
       );
 
-      const amountWei = ethers.parseUnits(amount.toString(), 18);
-      const tx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei);
+    const amountWei = ethers.parseUnits(amount.toString(), 18);
+      const txOptions = await this.getTransactionOptions(provider);
+      const tx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei, txOptions);
       await tx.wait();
 
       return { success: true };

@@ -1271,12 +1271,52 @@ const withdrawFromSavingsPlan = async (plan) => {
       }
       
       addSystemMessage(`🗑️ Schedule cancelled successfully`, 'info');
-    } else if (type === 'savings') {
+   } else if (type === 'savings') {
+    
+      const plan = savingsPlans.find(p => p.id === id);
+      
+     
+      if (plan?.contractPlanId && agentManager?.cancelSavingsPlan) {
+        addSystemMessage(`⏳ Cancelling savings plan on blockchain...`, 'info');
+        
+        try {
+          const result = await agentManager.cancelSavingsPlan(provider, plan.contractPlanId);
+          
+          if (result.success) {
+            addSystemMessage(`✅ Plan cancelled - ${plan.totalSaved || 0} MNEE returned to vault`, 'success');
+            
+           
+            try {
+              const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
+              await syncSavingsWithBlockchain(
+                account,
+                agentManager.getAddress(),
+                provider,
+                agentManager.networkConfig.savingsContract
+              );
+            } catch (e) {
+              console.warn('Post-cancel sync failed:', e);
+            }
+            
+            // Refresh vault/wallet balances
+            onAgentWalletUpdate && onAgentWalletUpdate();
+          } else {
+            addSystemMessage(`❌ Cancel failed: ${result.error}`, 'danger');
+            return; // Don't remove from local if contract call failed
+          }
+        } catch (err) {
+          addSystemMessage(`❌ Cancel failed: ${err.message}`, 'danger');
+          return;
+        }
+      }
+      
+      // Remove from local state
       setSavingsPlans(prev => prev.filter(p => p.id !== id));
       const stored = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
       const updated = stored.filter(p => p.id !== id);
       localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(updated));
       
+      // Delete from backend
       try {
         await fetch(`${API_URL}/api/v1/savings/plan/${id}`, {
           method: 'DELETE',
@@ -1288,7 +1328,7 @@ const withdrawFromSavingsPlan = async (plan) => {
       
       addSystemMessage(`🗑️ Savings plan cancelled successfully`, 'info');
     }
-  };
+  }
 const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCount = 0) => {
     if (!account) return false;
     
