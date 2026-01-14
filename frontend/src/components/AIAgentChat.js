@@ -450,15 +450,15 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       try {
         const backendLoaded = await loadFromBackend();
         const pendingKey = `sentinel_pending_sync_${account}`;
-      const pendingSyncs = JSON.parse(localStorage.getItem(pendingKey) || '[]');
-      if (pendingSyncs.length > 0) {
-        console.log(`📤 Found ${pendingSyncs.length} pending syncs, retrying...`);
-        const syncSuccess = await syncToBackend(true, true);
-        if (syncSuccess) {
-          localStorage.removeItem(pendingKey);
-          console.log('✅ Pending syncs completed');
+        const pendingSyncs = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+        if (pendingSyncs.length > 0) {
+          console.log(`📤 Found ${pendingSyncs.length} pending syncs, retrying...`);
+          const syncSuccess = await syncToBackend(true, true);
+          if (syncSuccess) {
+            localStorage.removeItem(pendingKey);
+            console.log('✅ Pending syncs completed');
+          }
         }
-      }
         
         if (!backendLoaded) {
           const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
@@ -466,13 +466,32 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
           if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
         }
+        
+        if (provider && agentManager?.networkConfig?.savingsContract && agentManager?.getAddress()) {
+          try {
+            const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
+            const synced = await syncSavingsWithBlockchain(
+              account,
+              agentManager.getAddress(),
+              provider,
+              agentManager.networkConfig.savingsContract
+            );
+            if (synced) {
+              console.log('🔗 Blockchain sync on load:', synced.totalLocked, 'MNEE locked');
+              setSavingsPlans(synced.plans);
+            }
+          } catch (e) {
+            console.warn('Blockchain sync on load failed:', e);
+          }
+        }
+        
       } finally {
         setIsDataLoading(false);
       }
     };
     
     initializeData();
-  }, [account]);
+  }, [account, provider, agentManager]);
 
   useEffect(() => {
     if (account) {
