@@ -418,12 +418,23 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
       }
     };
 
-    loadAutomationAlerts();
-    const interval = setInterval(loadAutomationAlerts, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
+   loadAutomationAlerts();
+    
+    const handleSavingsUpdate = () => {
+      console.log('📊 AlertPanel: Received savings update');
+      loadAutomationAlerts();
+    };
+    
+    window.addEventListener('savingsUpdated', handleSavingsUpdate);
+    
+    const interval = setInterval(loadAutomationAlerts, 30000);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('savingsUpdated', handleSavingsUpdate);
+    };
   }, [account]);
 
-  // Combine all alerts
   const allAlerts = [...alerts, ...scheduleAlerts, ...savingsAlerts];
 
   const filteredAlerts = allAlerts.filter(alert => {

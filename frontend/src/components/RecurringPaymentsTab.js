@@ -21,7 +21,7 @@ export default function RecurringPaymentsTab({
   const [editForm, setEditForm] = useState({});
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+ useEffect(() => {
     if (scheduler) {
       loadData();
     }
@@ -32,6 +32,20 @@ export default function RecurringPaymentsTab({
     setSchedules(data.schedules || []);
     setSavingsPlans(data.savingsPlans || []);
   };
+
+  useEffect(() => {
+    const handleSavingsUpdate = (event) => {
+      console.log('📊 RecurringTab: Received savings update');
+      if (event.detail?.plans) {
+        setSavingsPlans(event.detail.plans);
+      } else if (scheduler) {
+        loadData();
+      }
+    };
+    
+    window.addEventListener('savingsUpdated', handleSavingsUpdate);
+    return () => window.removeEventListener('savingsUpdated', handleSavingsUpdate);
+  }, [scheduler]);
 
   const handlePause = (id) => {
     scheduler.pauseSchedule(id);
@@ -336,9 +350,9 @@ export default function RecurringPaymentsTab({
                         <span className="label">Deposit</span>
                         <span className="value">{plan.amount} MNEE</span>
                       </div>
-                      <div className="detail-item">
+                       <div className="detail-item">
                         <span className="label">Frequency</span>
-                        <span className="value">{plan.isRecurring ? plan.frequency : 'One-time'}</span>
+                        <span className="value">{plan.isRecurring ? `${plan.frequency} @ ${plan.executionTime || '--:--'}` : 'One-time'}</span>
                       </div>
                       <div className="detail-item">
                         <span className="label">Unlock Date</span>
@@ -353,7 +367,7 @@ export default function RecurringPaymentsTab({
                     {plan.isRecurring && plan.nextDeposit && !plan.withdrawn && (
                       <div className="next-deposit">
                         <Clock size={12} />
-                        <span>Next deposit: {formatScheduleDate(plan.nextDeposit)}</span>
+                       <span>Next deposit: {formatScheduleDate(plan.nextDeposit)} @ {plan.executionTime || '--:--'}</span>
                         {getDaysUntil(plan.nextDeposit) <= 0 && (
                           <button 
                             className="deposit-btn"

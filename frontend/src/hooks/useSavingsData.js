@@ -11,16 +11,36 @@ const SAVINGS_ABI = [
 let savingsCache = { totalLocked: 0, plans: [], lastFetch: 0, account: null };
 const CACHE_DURATION = 10000;
 
-export async function syncSavingsWithBlockchain(account, provider, savingsContractAddress) {
-  if (!provider || !savingsContractAddress || !account) return null;
+/**
+ * Sync savings data with blockchain
+ * @param {string} account - User's wallet address (for localStorage key)
+ * @param {string} agentAddress - Agent wallet address (owns the plans on-chain)
+ * @param {object} provider - Ethers provider
+ * @param {string} savingsContractAddress - SentinelSavings contract address
+ */
+export async function syncSavingsWithBlockchain(account, agentAddress, provider, savingsContractAddress) {
+  if (!provider || !savingsContractAddress) return null;
+  
+  // Need agent address to query blockchain (plans are owned by agent)
+  const queryAddress = agentAddress || account;
+  if (!queryAddress) return null;
+  
+  // Check cache
+  const now = Date.now();
+  if (savingsCache.account === account && (now - savingsCache.lastFetch) < CACHE_DURATION) {
+    console.log('📦 Using cached savings data');
+    return { totalLocked: savingsCache.totalLocked, plans: savingsCache.plans };
+  }
   
   try {
     const contract = new ethers.Contract(savingsContractAddress, SAVINGS_ABI, provider);
-    const planIds = await contract.getUserPlans(account);
+    
+    // Get plans owned by agent wallet (agent is the on-chain owner)
+    const planIds = await contract.getUserPlans(queryAddress);
     const localPlans = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
 
-    // Get total locked
-    const totalLockedWei = await contract.getTotalLocked(account);
+    // Get total locked for agent
+    const totalLockedWei = await contract.getTotalLocked(queryAddress);
     const totalLocked = parseFloat(ethers.formatUnits(totalLockedWei, 18));
 
     // Update each local plan with on-chain data
@@ -40,21 +60,21 @@ export async function syncSavingsWithBlockchain(account, provider, savingsContra
       }
     }
 
-    // Save to localStorage
+    // Save to localStorage (keyed by user account)
     localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(localPlans));
     
     // Update cache
     savingsCache = { totalLocked, plans: localPlans, lastFetch: Date.now(), account };
     
-    // Notify all components
+    // Notify all components listening for updates
     window.dispatchEvent(new CustomEvent('savingsUpdated', { 
       detail: { totalLocked, plans: localPlans } 
     }));
     
-    console.log('✅ Synced savings with blockchain:', totalLocked, 'MNEE locked');
+    console.log('✅ Synced savings with blockchain:', totalLocked, 'MNEE locked,', localPlans.length, 'plans');
     return { totalLocked, plans: localPlans };
   } catch (error) {
-    console.error('Sync failed:', error);
+    console.error('Blockchain sync failed:', error);
     return null;
   }
 }
@@ -63,4 +83,8 @@ export function getCachedSavings() {
   return savingsCache;
 }
 
-export default { syncSavingsWithBlockchain, getCachedSavings };
+export function clearSavingsCache() {
+  savingsCache = { totalLocked: 0, plans: [], lastFetch: 0, account: null };
+}
+
+export default { syncSavingsWithBlockchain, getCachedSavings, clearSavingsCache };

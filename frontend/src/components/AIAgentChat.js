@@ -39,7 +39,7 @@ const AI_PROVIDERS = {
 const getSystemPrompt = (trustedVendors, schedules, savingsPlans, hasAgentWallet, agentBalance, pendingTopUp) => {
   const vendorList = trustedVendors.length > 0 ? trustedVendors.map(v => `- ${v.name}: ${v.address}`).join('\n') : '(No trusted vendors)';
   const scheduleList = schedules.length > 0 ? schedules.map(s => `- ${s.amount} MNEE to ${s.vendor} (${s.frequency})`).join('\n') : '(No scheduled payments)';
-  const savingsList = savingsPlans.length > 0 ? savingsPlans.map(s => `- ${s.name}: ${s.amount} MNEE/${s.frequency}, locked ${s.lockDays} days`).join('\n') : '(No savings plans)';
+   const savingsList = savingsPlans.length > 0 ? savingsPlans.map(s => `- ${s.name}: ${s.amount} MNEE/${s.frequency} at ${s.executionTime || 'anytime'}, locked ${s.lockDays} days`).join('\n') : '(No savings plans)';
   const agentWalletInfo = hasAgentWallet ? `\n\nAGENT WALLET STATUS:\n- Connected: Yes\n- Balance: ${agentBalance} MNEE\n- Can execute automated payments without popups` : '\n\nAGENT WALLET STATUS:\n- Not initialized (user needs to set up in Agent Wallet panel)';
 
   const topUpContext = pendingTopUp ? `\n\n⚠️ USER NEEDS TO TOP UP AGENT WALLET: Requested ${pendingTopUp.amount} MNEE for "${pendingTopUp.reason}". Ask them to confirm the amount to fund.` : '';
@@ -59,10 +59,12 @@ PAYMENT ROUTING RULES:
 RESPONSE FORMAT - Always include JSON for actions:
 1. INSTANT PAYMENTS: {"action": "payment", "vendor": "name/address", "amount": number, "reason": "description"}
 2. SCHEDULED PAYMENTS: {"action": "schedule", "vendor": "name/address", "amount": number, "frequency": "daily|weekly|monthly|yearly", "startDate": "YYYY-MM-DD", "reason": "description"}
-3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "reason": "description"}
-    - when a user wants to make a savings plan and he doesnt state when he wants it to start ask him when he wants it, the time and day to start of he says immediately start it immediately, some users might not want the plan to start till some days time or so
-    - Subsequent deposits are scheduled automatically, the deposits occur every 24hrs from the first deposit time
-    - Requires Agent Wallet to have sufficient balance
+3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "startTime": "HH:MM", "reason": "description"}
+    - Ask user what TIME they want deposits to occur (e.g., "9:00 AM", "6:00 PM")
+    - If user says "now" or "immediately", use current time
+    - startTime should be in 24-hour format like "09:00" or "18:00"
+    - Example: User says "save 50 MNEE daily at 9am" → startTime: "09:00"
+    - Subsequent deposits occur at the SAME TIME each day/week/month automatically
 4. VIEW SCHEDULES: {"action": "view_schedules"}
 5. VIEW SAVINGS: {"action": "view_savings"}
 6. CANCEL: {"action": "cancel_schedule", "id": "schedule_id"} or {"action": "cancel_savings", "id": "savings_id"}
@@ -320,7 +322,7 @@ const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow, onWith
                       <span>{(plan.totalSaved || 0).toFixed(2)} / {(plan.targetAmount || 0).toFixed(2)} MNEE</span>
                     </div>
                     <div className="item-meta">
-                      <span><Clock size={10} /> {plan.amount} MNEE/{plan.frequency}</span>
+                     <span><Clock size={10} /> {plan.amount} MNEE/{plan.frequency} @ {plan.executionTime || '--:--'}</span>
                       {isWithdrawn ? (
                         <span className="withdrawn-label"><CheckCircle size={10} /> Withdrawn</span>
                       ) : isUnlocked ? (
@@ -401,7 +403,7 @@ export default function AIAgentChat({
   };
 
   const availableProviders = Object.entries(AI_PROVIDERS).filter(([key]) => getApiKey(key));
-const calculateNextDate = (frequency, startDate = new Date()) => {
+const calculateNextDate = (frequency, startDate = new Date(), executionTime = null) => {
     const next = new Date(startDate);
     switch (frequency) {
       case 'daily': next.setDate(next.getDate() + 1); break;
@@ -410,7 +412,13 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
       default: next.setMonth(next.getMonth() + 1);
     }
-    return next.toISOString().split('T')[0];
+    
+    if (executionTime) {
+      const [hours, minutes] = executionTime.split(':').map(Number);
+      next.setHours(hours, minutes, 0, 0);
+    }
+    
+    return next.toISOString();
   };
  const loadAgentBalance = useCallback(async () => {
     if (agentManager && agentManager.hasWallet() && provider) {
@@ -523,7 +531,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
         }
       }
 
-            for (const plan of savingsPlans) {
+          for (const plan of savingsPlans) {
         const nextDeposit = new Date(plan.nextDeposit);
         if (nextDeposit <= now) {
           if (balance >= plan.amount) {
@@ -537,8 +545,13 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
                   addSystemMessage(`✅ DEPOSITED: ${plan.amount} MNEE to savings`, 'success');
                   
                   try {
-                    const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
-                    const synced = await syncSavingsWithBlockchain(account, provider, agentManager?.networkConfig?.savingsContract);
+                   const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
+                    const synced = await syncSavingsWithBlockchain(
+                      account,
+                      agentManager?.getAddress(),
+                      provider,
+                      agentManager?.networkConfig?.savingsContract
+                    );
                     if (synced) {
                       setSavingsPlans(synced.plans);
                     }
@@ -549,11 +562,11 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
               }
             }
 
-            setSavingsPlans(prev => prev.map(p => p.id === plan.id ? {
+           setSavingsPlans(prev => prev.map(p => p.id === plan.id ? {
               ...p,
               totalSaved: (p.totalSaved || 0) + plan.amount,
               depositsCompleted: (p.depositsCompleted || 0) + 1,
-              nextDeposit: calculateNextDate(p.frequency),
+              nextDeposit: calculateNextDate(p.frequency, new Date(), p.executionTime),
               notified: false
             } : p));
             await loadAgentBalance();
@@ -759,7 +772,12 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
           setTimeout(async () => {
             try {
               const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
-              const synced = await syncSavingsWithBlockchain(account, provider, agentManager?.networkConfig?.savingsContract);
+              const synced = await syncSavingsWithBlockchain(
+                account,
+                agentManager?.getAddress(),
+                provider,
+                agentManager?.networkConfig?.savingsContract
+              );
               if (synced) {
                 setSavingsPlans(synced.plans);
               }
@@ -775,6 +793,14 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       }
     }
 
+  const now = new Date();
+    let executionTime = intent.startTime;
+    if (!executionTime || executionTime === 'now') {
+      executionTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    }
+    
+    const nextDepositDate = calculateNextDate(frequency, now, executionTime);
+    
     const newPlan = {
       id: `save_${Date.now()}`,
       contractPlanId,
@@ -786,18 +812,19 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       totalSaved: depositSucceeded ? amount : 0,  
       totalDeposits: totalDeposits,
       depositsCompleted: depositSucceeded ? 1 : 0, 
-      startDate: new Date().toISOString(),
-      nextDeposit: calculateNextDate(frequency),
+      startDate: now.toISOString(),
+      executionTime: executionTime,  
+      nextDeposit: nextDepositDate,
       unlockDate: unlockDate.toISOString().split('T')[0],
       reason: intent.reason || 'Savings plan',
-      createdAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
       notified: false,
       lowBalanceNotified: false
     };
 
     setSavingsPlans(prev => [...prev, newPlan]);
    syncToBackend(false, true);
-    addSystemMessage(`✅ SAVINGS PLAN: "${newPlan.name}" - ${amount} MNEE/${frequency} for ${lockDays} days`, 'savings');
+       addSystemMessage(`✅ SAVINGS PLAN: "${newPlan.name}" - ${amount} MNEE/${frequency} at ${executionTime} for ${lockDays} days`, 'savings');
     
     return {
       name: newPlan.name,

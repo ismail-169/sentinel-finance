@@ -703,11 +703,12 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
   const [limitsSuccess, setLimitsSuccess] = useState(false);
   const [showNewSavingsModal, setShowNewSavingsModal] = useState(false);
   const [showNewScheduleModal, setShowNewScheduleModal] = useState(false);
-  const [newSavingsForm, setNewSavingsForm] = useState({
+ const [newSavingsForm, setNewSavingsForm] = useState({
     name: '',
     amount: '',
     frequency: 'monthly',
-    lockDays: 30
+    lockDays: 30,
+    executionTime: '09:00'
   });
   const [newScheduleForm, setNewScheduleForm] = useState({
     vendor: '',
@@ -720,7 +721,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
   const [creatingSchedule, setCreatingSchedule] = useState(false);
 
 
-  useEffect(() => {
+ useEffect(() => {
     const loadAutomations = () => {
       if (account) {
         try {
@@ -735,8 +736,24 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
     };
 
     loadAutomations();
-    const interval = setInterval(loadAutomations, 3000);
-    return () => clearInterval(interval);
+    
+    const handleSavingsUpdate = (event) => {
+      console.log('📊 VaultStats: Received savings update');
+      if (event.detail?.plans) {
+        setSavingsPlans(event.detail.plans);
+      } else {
+        loadAutomations();
+      }
+    };
+    
+    window.addEventListener('savingsUpdated', handleSavingsUpdate);
+    
+    const interval = setInterval(loadAutomations, 10000);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('savingsUpdated', handleSavingsUpdate);
+    };
   }, [account]);
 
   React.useEffect(() => {

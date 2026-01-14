@@ -333,7 +333,7 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
   const [savingsPlans, setSavingsPlans] = useState([]);
 
   // Load schedules and savings from localStorage
-  useEffect(() => {
+ useEffect(() => {
     const loadAutomations = () => {
       if (account) {
         try {
@@ -349,9 +349,26 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
 
     loadAutomations();
     
-    // Poll for updates every 3 seconds (for when AI chat adds new schedules)
-    const interval = setInterval(loadAutomations, 3000);
-    return () => clearInterval(interval);
+    // Listen for real-time savings updates from AI chat
+    const handleSavingsUpdate = (event) => {
+      console.log('📊 Dashboard: Received savings update');
+      if (event.detail?.plans) {
+        setSavingsPlans(event.detail.plans);
+      } else {
+        // Fallback: reload from localStorage
+        loadAutomations();
+      }
+    };
+    
+    window.addEventListener('savingsUpdated', handleSavingsUpdate);
+    
+    // Poll for updates every 10 seconds as backup
+    const interval = setInterval(loadAutomations, 10000);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('savingsUpdated', handleSavingsUpdate);
+    };
   }, [account]);
 
   const currentBalance = vaultBalance || vaultData?.balance || '0';
