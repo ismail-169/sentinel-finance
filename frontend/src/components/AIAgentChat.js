@@ -1411,14 +1411,29 @@ const loadFromBackend = async () => {
           contractPlanId: p.contract_plan_id
         }));
         
-        const backendScheduleIds = new Set(backendSchedules.map(s => s.id));
+       const backendScheduleIds = new Set(backendSchedules.map(s => s.id));
         const backendPlanIds = new Set(backendPlans.map(p => p.id));
         
         const localOnlySchedules = localSchedules.filter(s => !backendScheduleIds.has(s.id));
         const localOnlyPlans = localPlans.filter(p => !backendPlanIds.has(p.id));
         
+        const smartMergedPlans = backendPlans.map(bp => {
+          const localPlan = localPlans.find(lp => lp.id === bp.id);
+          if (localPlan) {
+            return {
+              ...bp,
+              totalSaved: Math.max(bp.totalSaved || 0, localPlan.totalSaved || 0),
+              totalDeposited: Math.max(bp.totalDeposited || 0, localPlan.totalDeposited || 0),
+              depositsCompleted: Math.max(bp.depositsCompleted || 0, localPlan.depositsCompleted || 0),
+              contractPlanId: bp.contractPlanId || localPlan.contractPlanId,
+              executionTime: bp.executionTime || localPlan.executionTime || '09:00'
+            };
+          }
+          return bp;
+        });
+        
         const mergedSchedules = [...backendSchedules, ...localOnlySchedules];
-        const mergedPlans = [...backendPlans, ...localOnlyPlans];
+        const mergedPlans = [...smartMergedPlans, ...localOnlyPlans];
         
         setSchedules(mergedSchedules);
         setSavingsPlans(mergedPlans);
