@@ -298,7 +298,7 @@ export default function App() {
   }, []);
 
   const loadAlertsFromApi = useCallback(async () => {
-    const data = await apiCall('/api/v1/alerts?acknowledged=false');
+    const data = await apiCall('/api/v1/alerts?acknowledged=0');
     if (data?.alerts) {
       setAlerts(data.alerts.map(alert => ({
         id: alert.id,

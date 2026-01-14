@@ -19,7 +19,10 @@ const SAVINGS_ABI = [
   "function timeUntilUnlock(uint256 _planId) view returns (uint256)",
   "function getTotalLocked(address _user) view returns (uint256)",
   "function withdraw(uint256 _planId)",
-  "function cancelPlan(uint256 _planId)"
+  "function cancelPlan(uint256 _planId)",
+  "event PlanCreated(uint256 indexed planId, address indexed owner, string name, uint256 lockDays)",
+  "event Deposit(uint256 indexed planId, uint256 amount)",
+  "event Withdrawal(uint256 indexed planId, uint256 amount)"
 ];
 
 class AgentWalletManager {
@@ -370,15 +373,39 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       const receipt = await createTx.wait();
       
       // Extract planId from logs
-      let planId = null;
+     let planId = null;
       for (const log of receipt.logs) {
         try {
           const parsed = savingsContract.interface.parseLog(log);
-          if (parsed && parsed.name === 'PlanCreated') {
-            planId = Number(parsed.args.planId);
+          if (parsed && (parsed.name === 'PlanCreated' || parsed.name === 'PlanCreatedWithDeposit')) {
+            planId = Number(parsed.args.planId || parsed.args[0]);
             break;
           }
-        } catch (e) {}
+        } catch (e) {
+          // Try to parse as raw topic if ABI parsing fails
+          if (log.topics && log.topics.length > 1) {
+            try {
+              const possiblePlanId = parseInt(log.topics[1], 16);
+              if (!isNaN(possiblePlanId) && possiblePlanId < 1000000) {
+                planId = possiblePlanId;
+                break;
+              }
+            } catch (e2) {}
+          }
+        }
+      }
+      
+      // Fallback: get latest plan from user's plans
+      if (planId === null) {
+        try {
+          const userPlans = await savingsContract.getUserPlans(this.userAddress);
+          if (userPlans.length > 0) {
+            planId = Number(userPlans[userPlans.length - 1]);
+            console.log('PlanId recovered from getUserPlans:', planId);
+          }
+        } catch (e) {
+          console.warn('Could not recover planId:', e);
+        }
       }
 
       return {
@@ -516,11 +543,114 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         });
       }
 
-      return plans.filter(p => !p.withdrawn);
-
+     return plans.filter(p => !p.withdrawn);
     } catch (error) {
       console.error('Failed to get savings plans:', error);
       return [];
+    }
+  }
+
+  /**
+   * Withdraw from savings plan after lock period ends
+   * Funds go to the vault address set when plan was created
+   */
+  async withdrawFromSavings(provider, planId) {
+    if (!this.ensureWalletLoaded()) {
+      return { success: false, error: 'Agent wallet not set up' };
+    }
+
+    if (!this.networkConfig.savingsContract) {
+      return { success: false, error: 'Savings contract not configured' };
+    }
+
+    try {
+      const connectedWallet = this.agentWallet.connect(provider);
+      
+      const savingsContract = new ethers.Contract(
+        this.networkConfig.savingsContract,
+        SAVINGS_ABI,
+        connectedWallet
+      );
+
+      // Check if plan is unlocked
+      const isUnlocked = await savingsContract.isUnlocked(planId);
+      if (!isUnlocked) {
+        const timeLeft = await savingsContract.timeUntilUnlock(planId);
+        const daysLeft = Math.ceil(Number(timeLeft) / 86400);
+        return { 
+          success: false, 
+          error: `Plan still locked. ${daysLeft} days remaining.`,
+          daysRemaining: daysLeft
+        };
+      }
+
+      // Check gas
+      const gasCheck = await this.checkGasBalance(provider);
+      if (gasCheck.empty) {
+        return { success: false, error: 'No ETH for gas', needsGas: true };
+      }
+
+      // Execute withdrawal - funds go to vault automatically
+      const tx = await savingsContract.withdraw(planId);
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        txHash: receipt.hash,
+        planId
+      };
+
+    } catch (error) {
+      console.error('Withdraw from savings failed:', error);
+      return { 
+        success: false, 
+        error: error.reason || error.message || 'Withdrawal failed' 
+      };
+    }
+  }
+
+  /**
+   * Cancel a savings plan
+   */
+  async cancelSavingsPlan(provider, planId) {
+    if (!this.ensureWalletLoaded()) {
+      return { success: false, error: 'Agent wallet not set up' };
+    }
+
+    if (!this.networkConfig.savingsContract) {
+      return { success: false, error: 'Savings contract not configured' };
+    }
+
+    try {
+      const connectedWallet = this.agentWallet.connect(provider);
+      
+      const savingsContract = new ethers.Contract(
+        this.networkConfig.savingsContract,
+        SAVINGS_ABI,
+        connectedWallet
+      );
+
+      // Check gas
+      const gasCheck = await this.checkGasBalance(provider);
+      if (gasCheck.empty) {
+        return { success: false, error: 'No ETH for gas', needsGas: true };
+      }
+
+      const tx = await savingsContract.cancelPlan(planId);
+      const receipt = await tx.wait();
+
+      return {
+        success: true,
+        txHash: receipt.hash,
+        planId
+      };
+
+    } catch (error) {
+      console.error('Cancel savings plan failed:', error);
+      return { 
+        success: false, 
+        error: error.reason || error.message || 'Cancellation failed' 
+      };
     }
   }
 

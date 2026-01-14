@@ -233,7 +233,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
   );
 };
 
-const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow }) => {
+const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow, onWithdrawSavings, withdrawingPlanId }) => {
   const [activeTab, setActiveTab] = useState('schedules');
 
   return (
@@ -297,32 +297,60 @@ const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow }) => {
             </div>
           ) : (
             savingsPlans.map(plan => {
-              const progress = Math.min(100, (plan.totalSaved / plan.targetAmount) * 100);
+              const progress = Math.min(100, ((plan.totalSaved || 0) / (plan.targetAmount || 1)) * 100);
               const daysLeft = Math.max(0, Math.ceil((new Date(plan.unlockDate) - new Date()) / (1000 * 60 * 60 * 24)));
+              const isUnlocked = daysLeft <= 0;
+              const isWithdrawn = plan.withdrawn;
+              const isWithdrawing = withdrawingPlanId === plan.id;
               
               return (
-                <div key={plan.id} className="savings-item">
-                  <div className="item-icon locked"><Lock size={16} /></div>
+                <div key={plan.id} className={`savings-item ${isWithdrawn ? 'withdrawn' : ''}`}>
+                  <div className={`item-icon ${isUnlocked ? 'unlocked' : 'locked'}`}>
+                    {isWithdrawn ? <CheckCircle size={16} /> : isUnlocked ? <Wallet size={16} /> : <Lock size={16} />}
+                  </div>
                   <div className="item-details">
                     <div className="item-title">{plan.name}</div>
                     <div className="savings-progress">
                       <div className="progress-bar">
                         <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                       </div>
-                      <span>{plan.totalSaved.toFixed(2)} / {plan.targetAmount.toFixed(2)} MNEE</span>
+                      <span>{(plan.totalSaved || 0).toFixed(2)} / {(plan.targetAmount || 0).toFixed(2)} MNEE</span>
                     </div>
                     <div className="item-meta">
                       <span><Clock size={10} /> {plan.amount} MNEE/{plan.frequency}</span>
-                      <span><Lock size={10} /> {daysLeft} days left</span>
+                      {isWithdrawn ? (
+                        <span className="withdrawn-label"><CheckCircle size={10} /> Withdrawn</span>
+                      ) : isUnlocked ? (
+                        <span className="unlocked-label"><Wallet size={10} /> Ready to withdraw</span>
+                      ) : (
+                        <span><Lock size={10} /> {daysLeft} days left</span>
+                      )}
                     </div>
                   </div>
                   <div className="item-actions">
-                    {daysLeft === 0 ? (
-                      <button className="action-btn withdraw" title="Withdraw">
-                        <Wallet size={12} />
+                    {isWithdrawn ? (
+                      <div className="withdrawn-badge">DONE</div>
+                    ) : isUnlocked ? (
+                      <button 
+                        className="action-btn withdraw" 
+                        onClick={() => onWithdrawSavings(plan)}
+                        disabled={isWithdrawing}
+                        title="Withdraw to Vault"
+                      >
+                        {isWithdrawing ? <Loader size={12} className="spin" /> : <Wallet size={12} />}
                       </button>
                     ) : (
                       <div className="locked-badge">LOCKED</div>
+                    )}
+                    {!isWithdrawn && (
+                      <button 
+                        className="action-btn cancel" 
+                        onClick={() => onCancel('savings', plan.id)} 
+                        title="Cancel Plan"
+                        disabled={isWithdrawing}
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -335,7 +363,7 @@ const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow }) => {
   );
 };
 
-export default function AIAgentChat({ 
+export default function AIAgentChat({
   contract, 
   account, 
   onTransactionCreated, 
@@ -354,8 +382,11 @@ export default function AIAgentChat({
   const [showSchedulePanel, setShowSchedulePanel] = useState(false);
   const [schedules, setSchedules] = useState([]);
   const [savingsPlans, setSavingsPlans] = useState([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [pendingSyncs, setPendingSyncs] = useState([]);
   const [agentBalance, setAgentBalance] = useState('0');
   const [agentEthBalance, setAgentEthBalance] = useState('0');
+  const [withdrawingPlanId, setWithdrawingPlanId] = useState(null);
   const messagesEndRef = useRef(null);
   const [pendingTopUp, setPendingTopUp] = useState(null);
   const [lastBalanceCheck, setLastBalanceCheck] = useState(0);
@@ -398,17 +429,33 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     return () => clearInterval(balanceInterval);
   }, [loadAgentBalance]);
 
- useEffect(() => {
+   useEffect(() => {
     const initializeData = async () => {
       if (!account) return;
       
-      const backendLoaded = await loadFromBackend();
+      setIsDataLoading(true);
       
-      if (!backendLoaded) {
-        const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
-        const savedSavings = localStorage.getItem(`sentinel_savings_${account}`);
-        if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
-        if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
+      try {
+        const backendLoaded = await loadFromBackend();
+        const pendingKey = `sentinel_pending_sync_${account}`;
+      const pendingSyncs = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+      if (pendingSyncs.length > 0) {
+        console.log(`📤 Found ${pendingSyncs.length} pending syncs, retrying...`);
+        const syncSuccess = await syncToBackend(true, true);
+        if (syncSuccess) {
+          localStorage.removeItem(pendingKey);
+          console.log('✅ Pending syncs completed');
+        }
+      }
+        
+        if (!backendLoaded) {
+          const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
+          const savedSavings = localStorage.getItem(`sentinel_savings_${account}`);
+          if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+          if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
+        }
+      } finally {
+        setIsDataLoading(false);
       }
     };
     
@@ -421,6 +468,17 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(savingsPlans));
     }
   }, [schedules, savingsPlans, account]);
+
+ useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && account) {
+        syncToBackend(true, true);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [account]);
 
   useEffect(() => {
     const checkAndExecuteDuePayments = async () => {
@@ -643,7 +701,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     };
 
     setSchedules(prev => [...prev, newSchedule]);
-    setTimeout(() => syncToBackend(true, false), 500);
+    syncToBackend(true, false);
     addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${newSchedule.frequency}) via Agent Wallet`, 'schedule');
     return { vendor: newSchedule.vendor, amount: newSchedule.amount, frequency: newSchedule.frequency, nextDate: newSchedule.nextDate };
   };
@@ -670,13 +728,16 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     unlockDate.setDate(unlockDate.getDate() + lockDays);
 
     let contractPlanId = null;
+    let depositSucceeded = false;  
+    
     if (agentManager && agentManager.createSavingsPlan) {
       addSystemMessage(`⏳ Creating savings plan on blockchain...`, 'info');
       try {
         const result = await agentManager.createSavingsPlan(provider, intent.name || `${frequency} Savings`, lockDays, amount.toString(), true);
         if (result.success) {
           contractPlanId = result.planId;
-          addSystemMessage(`✅ On-chain savings plan created (ID: ${contractPlanId})`, 'success');
+          depositSucceeded = true; 
+          addSystemMessage(`✅ On-chain savings plan created${contractPlanId ? ` (ID: ${contractPlanId})` : ''}`, 'success');
           await loadAgentBalance();
           onAgentWalletUpdate && onAgentWalletUpdate();
         } else {
@@ -695,9 +756,9 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       frequency: frequency,
       lockDays: lockDays,
       targetAmount: targetAmount,
-      totalSaved: contractPlanId ? amount : 0,
+      totalSaved: depositSucceeded ? amount : 0,  
       totalDeposits: totalDeposits,
-      depositsCompleted: contractPlanId ? 1 : 0,
+      depositsCompleted: depositSucceeded ? 1 : 0, 
       startDate: new Date().toISOString(),
       nextDeposit: calculateNextDate(frequency),
       unlockDate: unlockDate.toISOString().split('T')[0],
@@ -708,7 +769,7 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     };
 
     setSavingsPlans(prev => [...prev, newPlan]);
-    setTimeout(() => syncToBackend(false, true), 500);
+   syncToBackend(false, true);
     addSystemMessage(`✅ SAVINGS PLAN: "${newPlan.name}" - ${amount} MNEE/${frequency} for ${lockDays} days`, 'savings');
     
     return {
@@ -1040,7 +1101,64 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     }
     return null;
   };
+const withdrawFromSavingsPlan = async (plan) => {
+    if (!agentManager || !agentManager.hasWallet()) {
+      addSystemMessage(`❌ Agent wallet not available.`, 'danger');
+      return;
+    }
 
+    if (!plan.contractPlanId && plan.contractPlanId !== 0) {
+      addSystemMessage(`❌ No on-chain plan ID found. This plan may be local-only.`, 'danger');
+      return;
+    }
+
+    setWithdrawingPlanId(plan.id);
+
+    try {
+      // Check ETH balance first
+      const ethBal = await agentManager.getEthBalance(provider);
+      if (parseFloat(ethBal) < 0.0001) {
+        addSystemMessage(`⚠️ Agent wallet needs ETH for gas to withdraw.`, 'warning');
+        addSystemMessage(`💡 Say "fund agent with 0.01 eth" to add gas, then try again.`, 'info');
+        setWithdrawingPlanId(null);
+        return;
+      }
+
+      addSystemMessage(`⏳ Withdrawing savings plan "${plan.name}" to vault...`, 'info');
+
+      const result = await agentManager.withdrawFromSavings(provider, plan.contractPlanId);
+
+      if (result.success) {
+        addSystemMessage(`✅ Withdrawn ${plan.totalSaved || plan.amount} MNEE to vault!`, 'success');
+        
+        // Update plan as withdrawn
+        setSavingsPlans(prev => prev.map(p => 
+          p.id === plan.id ? { ...p, withdrawn: true } : p
+        ));
+        
+        // Sync to backend
+        syncToBackend(false, true);
+        
+        // Refresh balances
+        onAgentWalletUpdate && onAgentWalletUpdate();
+        onTransactionCreated && onTransactionCreated();
+      } else {
+        if (result.daysRemaining) {
+          addSystemMessage(`❌ Plan still locked. ${result.daysRemaining} days remaining.`, 'danger');
+        } else if (result.needsGas) {
+          addSystemMessage(`❌ No ETH for gas. Fund agent wallet with ETH first.`, 'danger');
+          addSystemMessage(`💡 Say "fund agent with 0.01 eth" to add gas.`, 'info');
+        } else {
+          addSystemMessage(`❌ ${result.error}`, 'danger');
+        }
+      }
+    } catch (err) {
+      console.error('Withdraw savings error:', err);
+      addSystemMessage(`❌ Withdrawal failed: ${err.message}`, 'danger');
+    } finally {
+      setWithdrawingPlanId(null);
+    }
+  };
   const checkAgentBalanceAction = async () => {
     if (!agentManager || !agentManager.hasWallet()) {
       return {
@@ -1061,9 +1179,9 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
     if (type === 'schedule') {
       setSchedules(prev => prev.filter(s => s.id !== id));
      
-      const stored = JSON.parse(localStorage.getItem(`schedules_${account}`) || '[]');
+      const stored = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
       const updated = stored.filter(s => s.id !== id);
-      localStorage.setItem(`schedules_${account}`, JSON.stringify(updated));
+      localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(updated));
       
       try {
         await fetch(`${API_URL}/api/v1/recurring/schedule/${id}`, {
@@ -1077,9 +1195,9 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       addSystemMessage(`🗑️ Schedule cancelled successfully`, 'info');
     } else if (type === 'savings') {
       setSavingsPlans(prev => prev.filter(p => p.id !== id));
-      const stored = JSON.parse(localStorage.getItem(`savings_plans_${account}`) || '[]');
+      const stored = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
       const updated = stored.filter(p => p.id !== id);
-      localStorage.setItem(`savings_plans_${account}`, JSON.stringify(updated));
+      localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(updated));
       
       try {
         await fetch(`${API_URL}/api/v1/savings/plan/${id}`, {
@@ -1093,8 +1211,11 @@ const calculateNextDate = (frequency, startDate = new Date()) => {
       addSystemMessage(`🗑️ Savings plan cancelled successfully`, 'info');
     }
   };
-const syncToBackend = async (syncSchedules = true, syncSavings = true) => {
+const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCount = 0) => {
     if (!account) return false;
+    
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
     
     try {
       const data = {
@@ -1162,14 +1283,35 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true) => {
       
       console.log('✅ Backend sync successful');
       return true;
+      
     } catch (error) {
-      console.error('❌ Backend sync failed:', error);
+      console.error(`❌ Backend sync failed (attempt ${retryCount + 1}/${MAX_RETRIES}):`, error);
+      
+      if (retryCount < MAX_RETRIES - 1) {
+        console.log(`⏳ Retrying sync in ${RETRY_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return syncToBackend(syncSchedules, syncSavings, retryCount + 1);
+      }
+      
+      const pendingKey = `sentinel_pending_sync_${account}`;
+      const pending = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+      pending.push({
+        timestamp: new Date().toISOString(),
+        syncSchedules,
+        syncSavings
+      });
+      localStorage.setItem(pendingKey, JSON.stringify(pending));
+      console.warn('⚠️ Sync failed after retries. Marked as pending.');
+      
       return false;
     }
   };
 
-  const loadFromBackend = async () => {
+const loadFromBackend = async () => {
     if (!account) return false;
+    
+    const localSchedules = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
+    const localPlans = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
     
     try {
       const response = await fetch(`${API_URL}/api/v1/recurring/${account}`, {
@@ -1179,63 +1321,73 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true) => {
       if (response.ok) {
         const data = await response.json();
         
-        if (data.schedules?.length > 0) {
-          const transformedSchedules = data.schedules.map(s => ({
-            id: s.id,
-            vendor: s.vendor,
-            vendorAddress: s.vendor_address,
-            amount: s.amount,
-            frequency: s.frequency,
-            executionTime: s.execution_time,
-            nextRun: s.next_execution,
-            reason: s.reason,
-            isTrusted: s.is_trusted,
-            paused: !s.is_active,
-            createdAt: s.created_at,
-            executionCount: s.execution_count || 0,
-            lastExecuted: s.last_executed,
-            useAgentWallet: true
-          }));
-          setSchedules(transformedSchedules);
-          localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(transformedSchedules));
-        }
+        const backendSchedules = (data.schedules || []).map(s => ({
+          id: s.id,
+          vendor: s.vendor,
+          vendorAddress: s.vendor_address,
+          amount: s.amount,
+          frequency: s.frequency,
+          executionTime: s.execution_time,
+          nextRun: s.next_execution,
+          reason: s.reason,
+          isTrusted: s.is_trusted,
+          paused: !s.is_active,
+          createdAt: s.created_at,
+          executionCount: s.execution_count || 0,
+          lastExecuted: s.last_executed,
+          useAgentWallet: true
+        }));
         
-        if (data.savingsPlans?.length > 0) {
-          const transformedPlans = data.savingsPlans.map(p => ({
-            id: p.id,
-            name: p.name,
-            amount: p.amount,
-            frequency: p.frequency,
-            lockDays: p.lock_days,
-            executionTime: p.execution_time,
-            nextDeposit: p.next_deposit,
-            unlockDate: p.unlock_date,
-            targetAmount: p.target_amount,
-            totalSaved: p.total_saved,
-            totalDeposited: p.total_saved,
-            status: p.is_active ? 'active' : 'paused',
-            paused: !p.is_active,
-            withdrawn: p.withdrawn,
-            createdAt: p.created_at,
-            contractPlanId: p.contract_plan_id
-          }));
-          setSavingsPlans(transformedPlans);
-          localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(transformedPlans));
-        }
+        const backendPlans = (data.savingsPlans || []).map(p => ({
+          id: p.id,
+          name: p.name,
+          amount: p.amount,
+          frequency: p.frequency,
+          lockDays: p.lock_days,
+          executionTime: p.execution_time,
+          nextDeposit: p.next_deposit,
+          unlockDate: p.unlock_date,
+          targetAmount: p.target_amount,
+          totalSaved: p.total_saved,
+          totalDeposited: p.total_saved,
+          status: p.is_active ? 'active' : 'paused',
+          paused: !p.is_active,
+          withdrawn: p.withdrawn,
+          createdAt: p.created_at,
+          contractPlanId: p.contract_plan_id
+        }));
         
-        console.log('✅ Loaded from backend:', data.schedules?.length || 0, 'schedules,', data.savingsPlans?.length || 0, 'plans');
+        const backendScheduleIds = new Set(backendSchedules.map(s => s.id));
+        const backendPlanIds = new Set(backendPlans.map(p => p.id));
+        
+        const localOnlySchedules = localSchedules.filter(s => !backendScheduleIds.has(s.id));
+        const localOnlyPlans = localPlans.filter(p => !backendPlanIds.has(p.id));
+        
+        const mergedSchedules = [...backendSchedules, ...localOnlySchedules];
+        const mergedPlans = [...backendPlans, ...localOnlyPlans];
+        
+        setSchedules(mergedSchedules);
+        setSavingsPlans(mergedPlans);
+        
+        localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(mergedSchedules));
+        localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(mergedPlans));
+        
+        console.log('✅ Loaded from backend:', backendSchedules.length, 'schedules,', backendPlans.length, 'plans');
+        if (localOnlySchedules.length || localOnlyPlans.length) {
+          console.log('📦 Kept local-only:', localOnlySchedules.length, 'schedules,', localOnlyPlans.length, 'plans');
+        }
         return true;
       }
     } catch (error) {
       console.error('Backend load failed, using localStorage:', error);
     }
     
-    const localSchedules = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
-    const localPlans = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
     setSchedules(localSchedules);
     setSavingsPlans(localPlans);
     return false;
   };
+
+
   const buildConversationHistory = (maxMessages = 10) => {
     const conversationMessages = messages
       .filter(m => !m.isSystem)
@@ -1596,11 +1748,13 @@ case 'fund_agent_eth':
             animate={{ width: 320, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
           >
-            <SchedulePanel 
+           <SchedulePanel 
               schedules={schedules}
               savingsPlans={savingsPlans}
               onCancel={cancelScheduleOrSavings}
               onExecuteNow={executeScheduleNow}
+              onWithdrawSavings={withdrawFromSavingsPlan}
+              withdrawingPlanId={withdrawingPlanId}
             />
           </motion.div>
         )}
@@ -1710,7 +1864,16 @@ case 'fund_agent_eth':
         .action-btn.execute:hover { background: var(--accent-emerald); border-color: var(--accent-emerald); color: white; }
         .action-btn.cancel:hover { background: var(--accent-red); border-color: var(--accent-red); color: white; }
         .action-btn.withdraw:hover { background: #a855f7; border-color: #a855f7; color: white; }
-        .locked-badge { padding: 4px 8px; background: rgba(168, 85, 247, 0.2); color: #a855f7; font-size: 9px; font-family: var(--font-pixel); }
+       .locked-badge { padding: 4px 8px; background: rgba(168, 85, 247, 0.2); color: #a855f7; font-size: 9px; font-family: var(--font-pixel); }
+        .savings-item.withdrawn { opacity: 0.6; }
+        .item-icon.unlocked { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .unlocked-label { color: #4ade80; }
+        .withdrawn-label { color: #60a5fa; }
+        .withdrawn-badge { padding: 4px 8px; background: rgba(96, 165, 250, 0.3); color: #60a5fa; font-size: 9px; font-family: var(--font-pixel); }
+        .action-btn.withdraw { background: rgba(74, 222, 128, 0.2); border-color: #4ade80; color: #4ade80; }
+        .action-btn.withdraw:disabled { opacity: 0.5; cursor: not-allowed; }
+        .action-btn .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @media (max-width: 1024px) { .ai-wrapper { flex-direction: column; } .panel-wrapper { width: 100% !important; height: 300px; } .schedule-panel { width: 100%; } }
         @media (max-width: 768px) { .ai-wrapper { height: calc(100vh - 140px); min-height: 400px; } .chat-header { padding: 10px 14px; flex-wrap: wrap; gap: 10px; } .terminal-header { font-size: 10px; } .select-btn { padding: 6px 10px; font-size: 11px; } .message-area { padding: 14px; } .message-bubble { max-width: 92%; padding: 10px 12px; } .message-text { font-size: 12px; } .input-controls { padding: 12px; } .input-controls input { padding: 12px; font-size: 14px; } .input-controls button { padding: 12px 16px; } }
         @media (max-width: 480px) { .header-actions { gap: 8px; } .schedule-toggle { padding: 6px; } .terminal-header span { display: none; } .agent-indicator { display: none; } }
