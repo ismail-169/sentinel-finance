@@ -123,6 +123,7 @@ export default function App() {
   const [vaultData, setVaultData] = useState(null);
   const [walletBalance, setWalletBalance] = useState('0');
   const [transactions, setTransactions] = useState([]);
+  const [agentTransactions, setAgentTransactions] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -359,71 +360,148 @@ export default function App() {
     }
   }, [mneeContract, account]);
 
-  const loadVaultData = useCallback(async () => {
-    if (!vault) return;
+  const getAgentTxLabel = (type) => {
+  const labels = {
+    'payment': '🤖 AGENT PAYMENT',
+    'savings_deposit': '💰 SAVINGS DEPOSIT', 
+    'withdrawal': '📤 AGENT WITHDRAWAL',
+    'funding': '📥 AGENT FUNDED',
+    'schedule': '📅 SCHEDULED PAYMENT'
+  };
+  return labels[type] || '🤖 AGENT TX';
+};
 
-    try {
-      const [balance, dailyLimit, txLimit, timeLock, txCount] = await Promise.all([
-        vault.getVaultBalance(),
-        vault.dailyLimit(),
-        vault.transactionLimit(),
-        vault.timeLockDuration(),
-        vault.txCounter()
-      ]);
+ const loadVaultData = useCallback(async () => {
+  if (!vault) return;
 
-      setVaultData({
-        address: vaultAddress,
-        balance: ethers.formatUnits(balance, 18),
-        dailyLimit: ethers.formatUnits(dailyLimit, 18),
-        txLimit: ethers.formatUnits(txLimit, 18),
-        timeLockDuration: Number(timeLock),
-        totalTransactions: Number(txCount)
+  try {
+    const [balance, dailyLimit, txLimit, timeLock, txCount] = await Promise.all([
+      vault.getVaultBalance(),
+      vault.dailyLimit(),
+      vault.transactionLimit(),
+      vault.timeLockDuration(),
+      vault.txCounter()
+    ]);
+
+    setVaultData({
+      address: vaultAddress,
+      balance: ethers.formatUnits(balance, 18),
+      dailyLimit: ethers.formatUnits(dailyLimit, 18),
+      txLimit: ethers.formatUnits(txLimit, 18),
+      timeLockDuration: Number(timeLock),
+      totalTransactions: Number(txCount)
+    });
+
+    // Load vault transactions from API
+    const apiTxData = await apiCall('/api/v1/transactions/history?limit=20');
+    const apiTxMap = new Map();
+    if (apiTxData?.transactions) {
+      apiTxData.transactions.forEach(tx => {
+        apiTxMap.set(tx.tx_id, {
+          riskScore: tx.risk_score,
+          riskFactors: JSON.parse(tx.risk_factors || '[]')
+        });
       });
-
-      const apiTxData = await apiCall('/api/v1/transactions/history?limit=20');
-      const apiTxMap = new Map();
-      if (apiTxData?.transactions) {
-        apiTxData.transactions.forEach(tx => {
-          apiTxMap.set(tx.tx_id, {
-            riskScore: tx.risk_score,
-            riskFactors: JSON.parse(tx.risk_factors || '[]')
-          });
-        });
-      }
-
-      const txs = [];
-      const count = Math.min(Number(txCount), 20);
-      for (let i = Number(txCount) - 1; i >= Math.max(0, Number(txCount) - count); i--) {
-        const tx = await vault.getTransaction(i);
-        const apiData = apiTxMap.get(i) || {};
-        
-        txs.push({
-          id: i,
-          agent: tx.agent,
-          vendor: tx.vendor,
-          amount: ethers.formatUnits(tx.amount, 18),
-          timestamp: Number(tx.timestamp),
-          executeAfter: Number(tx.executeAfter),
-          executed: tx.executed,
-          revoked: tx.revoked,
-          reason: tx.reason,
-          riskScore: apiData.riskScore ? Math.round(apiData.riskScore * 100) : null,
-          riskFactors: apiData.riskFactors || [],
-          trustedVendor: await vault.trustedVendors(tx.vendor).catch(() => false)
-        });
-      }
-      setTransactions(txs);
-
-      await Promise.all([
-        loadAlertsFromApi(),
-        loadVendorsFromApi(),
-        loadWalletBalance()
-      ]);
-
-    } catch (err) {
-      console.error('Load vault data error:', err);
     }
-  }, [vault, vaultAddress, loadAlertsFromApi, loadVendorsFromApi, loadWalletBalance]);
+
+    // Load on-chain vault transactions
+    const txs = [];
+    const count = Math.min(Number(txCount), 20);
+    for (let i = Number(txCount) - 1; i >= Math.max(0, Number(txCount) - count); i--) {
+      const tx = await vault.getTransaction(i);
+      const apiData = apiTxMap.get(i) || {};
+      
+      txs.push({
+        id: i,
+        isAgentTx: false, // Vault transaction
+        txType: 'vault',
+        agent: tx.agent,
+        vendor: tx.vendor,
+        amount: ethers.formatUnits(tx.amount, 18),
+        timestamp: Number(tx.timestamp),
+        executeAfter: Number(tx.executeAfter),
+        executed: tx.executed,
+        revoked: tx.revoked,
+        reason: tx.reason,
+        riskScore: apiData.riskScore ? Math.round(apiData.riskScore * 100) : null,
+        riskFactors: apiData.riskFactors || [],
+        trustedVendor: await vault.trustedVendors(tx.vendor).catch(() => false)
+      });
+    }
+    setTransactions(txs);
+
+    // Load agent wallet transactions
+    if (account) {
+      try {
+        const agentResponse = await apiCall(`/api/v1/agent/transactions/${account}?limit=20`);
+        if (agentResponse?.transactions) {
+          const agentTxs = agentResponse.transactions.map(tx => ({
+            id: tx.id,
+            isAgentTx: true,
+            txType: 'agent',
+            executionType: tx.execution_type,
+            agent: tx.agent,
+            vendor: tx.destination,
+            amount: tx.amount,
+            timestamp: tx.timestamp ? new Date(tx.timestamp).getTime() / 1000 : Date.now() / 1000,
+            txHash: tx.tx_hash,
+            status: tx.status,
+            executed: tx.status === 'success',
+            revoked: tx.status === 'failed',
+            displayLabel: getAgentTxLabel(tx.execution_type)
+          }));
+          setAgentTransactions(agentTxs);
+        }
+      } catch (err) {
+        console.error('Load agent transactions error:', err);
+      }
+    }
+
+    await Promise.all([
+      loadAlertsFromApi(),
+      loadVendorsFromApi(),
+      loadWalletBalance()
+    ]);
+
+  } catch (err) {
+    console.error('Load vault data error:', err);
+  }
+}, [vault, vaultAddress, account, loadAlertsFromApi, loadVendorsFromApi, loadWalletBalance]);
+
+
+const loadAgentTransactions = useCallback(async () => {
+  if (!account) return;
+  
+  try {
+    const response = await apiCall(`/api/v1/agent/transactions/${account}?limit=50`);
+    if (response?.transactions) {
+      // Format agent transactions for display
+      const formattedTxs = response.transactions.map(tx => ({
+        id: tx.id,
+        isAgentTx: true, // IMPORTANT: Flag for styling
+        txType: 'agent',
+        executionType: tx.execution_type,
+        agent: tx.agent,
+        vendor: tx.destination,
+        amount: tx.amount,
+        timestamp: tx.timestamp ? new Date(tx.timestamp).getTime() / 1000 : Date.now() / 1000,
+        txHash: tx.tx_hash,
+        status: tx.status,
+        executed: tx.status === 'success',
+        revoked: tx.status === 'failed',
+        scheduleId: tx.schedule_id,
+        savingsPlanId: tx.savings_plan_id,
+        // Display labels based on execution type
+        displayLabel: getAgentTxLabel(tx.execution_type)
+      }));
+      
+      setAgentTransactions(formattedTxs);
+    }
+  } catch (err) {
+    console.error('Load agent transactions error:', err);
+  }
+}, [account]);
+
 
   useEffect(() => {
     if (appState === 'dashboard' && vault) {
@@ -685,13 +763,13 @@ export default function App() {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-              <Dashboard 
-                vaultData={vaultData}
-                transactions={transactions}
-                alerts={alerts}
-                account={account}
-                onRefresh={loadVaultData}
-              />
+             <Dashboard
+  vaultData={vaultData}
+  vaultBalance={vaultData?.balance || '0'}
+  transactions={[...transactions, ...agentTransactions].sort((a, b) => b.timestamp - a.timestamp)}
+  account={account}
+  onRefresh={loadVaultData}
+/>
             </motion.div>
           )}
 
@@ -729,12 +807,14 @@ export default function App() {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-              <TransactionList 
-                transactions={transactions}
-                onRevoke={loadVaultData}
-                onExecute={loadVaultData}
-                contract={vault}
-              />
+              <TransactionList
+  key="transactions"
+  transactions={[...transactions, ...agentTransactions].sort((a, b) => b.timestamp - a.timestamp)}
+  contract={vault}
+  account={account}
+  onRevoke={loadVaultData}
+  onExecute={loadVaultData}
+/>
             </motion.div>
           )}
 

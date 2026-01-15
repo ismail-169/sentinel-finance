@@ -347,6 +347,27 @@ class SavingsPlanCreate(BaseModel):
     total_deposits: int = 1
     target_amount: float
 
+class AgentTransactionLog(BaseModel):
+    """Log an agent wallet transaction"""
+    user_address: str
+    agent_address: str
+    tx_type: str  # 'payment', 'savings_deposit', 'withdrawal', 'funding'
+    amount: float
+    destination: str  # vendor address or savings contract
+    destination_name: Optional[str] = None
+    tx_hash: Optional[str] = None
+    status: str = "success"  # success, failed, pending
+    schedule_id: Optional[str] = None
+    savings_plan_id: Optional[str] = None
+    error_message: Optional[str] = None
+
+    @field_validator("user_address", "agent_address", "destination")
+    @classmethod
+    def validate_address(cls, v):
+        if v and Web3.is_address(v):
+            return v.lower()
+        return v.lower() if v else ""
+        
 class SyncRequest(BaseModel):
     user_address: str
     schedules: List[dict]
@@ -1238,6 +1259,119 @@ async def get_execution_history_endpoint(
     
     history = get_execution_history(user_address, limit)
     return {"history": history, "count": len(history)}
+
+    @app.post("/api/v1/agent/transactions")
+@limiter.limit("60/minute")
+async def log_agent_transaction(
+    request: Request,
+    req: AgentTransactionLog,
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Log an agent wallet transaction (payment, savings deposit, etc.)
+    Called by frontend after agent operations complete.
+    """
+    try:
+        # Use existing log_execution function from database
+        log_id = log_execution(
+            schedule_id=req.schedule_id,
+            savings_plan_id=req.savings_plan_id,
+            user_address=req.user_address,
+            execution_type=req.tx_type,
+            amount=req.amount,
+            destination=req.destination,
+            tx_hash=req.tx_hash,
+            status=req.status,
+            error_message=req.error_message
+        )
+        
+        # Create notification for successful transactions
+        if req.status == "success" and req.tx_type in ['payment', 'savings_deposit']:
+            dest_name = req.destination_name or req.destination[:10] + "..."
+            if req.tx_type == 'payment':
+                message = f"✅ Sent {req.amount} MNEE to {dest_name}"
+            else:
+                message = f"💰 Deposited {req.amount} MNEE to savings"
+            
+            create_notification(
+                req.user_address,
+                req.tx_type,
+                message,
+                req.tx_hash
+            )
+        
+        logger.info(
+            "agent_transaction_logged",
+            user=req.user_address,
+            type=req.tx_type,
+            amount=req.amount,
+            destination=req.destination,
+            status=req.status
+        )
+        
+        return {
+            "success": True,
+            "log_id": log_id,
+            "message": f"Transaction logged: {req.tx_type}"
+        }
+        
+    except Exception as e:
+        logger.error("agent_transaction_log_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/agent/transactions/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def get_agent_transactions(
+    request: Request,
+    user_address: str,
+    limit: int = 50,
+    tx_type: Optional[str] = None,
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Get agent wallet transactions for dashboard display.
+    Returns execution_log entries formatted for frontend.
+    """
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    try:
+        # Get execution history
+        history = get_execution_history(user_address.lower(), limit)
+        
+        # Filter by type if specified
+        if tx_type:
+            history = [h for h in history if h.get('execution_type') == tx_type]
+        
+        # Format for frontend compatibility
+        transactions = []
+        for h in history:
+            transactions.append({
+                "id": f"agent_{h['id']}",
+                "tx_type": "agent",  # Marker for frontend
+                "execution_type": h.get('execution_type', 'unknown'),
+                "agent": user_address.lower(),
+                "destination": h.get('destination', ''),
+                "amount": str(h.get('amount', 0)),
+                "timestamp": h.get('executed_at'),
+                "tx_hash": h.get('tx_hash'),
+                "status": h.get('status', 'unknown'),
+                "schedule_id": h.get('schedule_id'),
+                "savings_plan_id": h.get('savings_plan_id'),
+                "error_message": h.get('error_message')
+            })
+        
+        return {
+            "transactions": transactions,
+            "count": len(transactions)
+        }
+        
+    except Exception as e:
+        logger.error("get_agent_transactions_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/v1/recurring/health")
 async def recurring_system_health(request: Request):
     """Check health of recurring payment system"""

@@ -11,6 +11,26 @@ import {
 import sentinelLogo from '../sentinel-logo.png';
 const API_URL = process.env.REACT_APP_API_URL || 'https://api.sentinelfinance.xyz';
 const API_KEY = process.env.REACT_APP_API_KEY || '';
+const logAgentTransaction = async (txData) => {
+  try {
+    const response = await fetch(`${API_URL}/api/v1/agent/transactions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': API_KEY
+      },
+      body: JSON.stringify(txData)
+    });
+    
+    if (!response.ok) {
+      console.warn('Failed to log agent transaction:', await response.text());
+    } else {
+      console.log('✅ Agent transaction logged:', txData.tx_type);
+    }
+  } catch (err) {
+    console.error('Error logging agent transaction:', err);
+  }
+};
 const AI_PROVIDERS = {
   grok: {
     name: 'GROK 4',
@@ -530,17 +550,38 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
         if (nextDate <= now) {
           if (balance >= schedule.amount) {
           
-            addSystemMessage(`⚡ AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
+            addSystemMessage(` AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
             try {
               const result = await agentManager.sendMNEE(provider, schedule.vendorAddress, schedule.amount.toString(), schedule.reason);
               if (result.success) {
-                addSystemMessage(`✅ PAID: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
+                addSystemMessage(`✅ SENT: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
+                // LOG THE TRANSACTION
+    await logAgentTransaction({
+      user_address: account,
+      agent_address: agentManager.getAddress(),
+      tx_type: 'payment',
+      amount: parseFloat(amount),
+      destination: vendorAddress,
+      destination_name: vendorName,
+      tx_hash: result.txHash,
+      status: 'success'
+    });
                
                 setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false } : s));
                 await loadAgentBalance();
                 onAgentWalletUpdate && onAgentWalletUpdate();
               } else {
                 addSystemMessage(`❌ FAILED: ${result.error}`, 'danger');
+                await logAgentTransaction({
+      user_address: account,
+      agent_address: agentManager.getAddress(),
+      tx_type: 'payment',
+      amount: parseFloat(amount),
+      destination: vendorAddress,
+      destination_name: vendorName,
+      status: 'failed',
+      error_message: result.error
+    });
               }
             } catch (err) {
               addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
@@ -864,7 +905,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     if (agentManager && agentManager.hasWallet() && schedule.useAgentWallet) {
       const balance = parseFloat(await agentManager.getBalance(provider));
       if (balance >= schedule.amount && schedule.vendorAddress) {
-        addSystemMessage(`⚡ AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
+        addSystemMessage(` AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
         try {
           const result = await agentManager.sendMNEE(
             provider,
@@ -874,6 +915,18 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           );
           if (result.success) {
             addSystemMessage(`✅ PAID: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
+            // Log the transaction to backend
+      await logAgentTransaction({
+        user_address: account,
+        agent_address: agentManager.getAddress(),
+        tx_type: 'schedule',
+        amount: schedule.amount,
+        destination: schedule.vendorAddress,
+        destination_name: schedule.vendor,
+        tx_hash: result.txHash,
+        status: 'success',
+        schedule_id: schedule.id
+      });
             setSchedules(prev => prev.map(s => 
               s.id === schedule.id 
                 ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false }
@@ -885,9 +938,21 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           }
         } catch (err) {
           addSystemMessage(`❌ FAILED: ${err.message}. Falling back to vault...`, 'danger');
-        }
-      }
+      // Log failed transaction
+      await logAgentTransaction({
+        user_address: account,
+        agent_address: agentManager.getAddress(),
+        tx_type: 'schedule',
+        amount: schedule.amount,
+        destination: schedule.vendorAddress,
+        destination_name: schedule.vendor,
+        status: 'failed',
+        schedule_id: schedule.id,
+        error_message: result.error
+      });
     }
+  } 
+};
 
     addSystemMessage(`⚡ EXECUTING SCHEDULED PAYMENT VIA VAULT...`, 'info');
     

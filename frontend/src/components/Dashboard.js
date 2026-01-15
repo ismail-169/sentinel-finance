@@ -4,7 +4,7 @@ import {
   Shield, TrendingUp, Clock, AlertTriangle, 
   CheckCircle, XCircle, Activity, Zap, RefreshCw,
   ArrowUpRight, ArrowDownRight, DollarSign, Users,
-  Wallet, Loader, Calendar, PiggyBank, Repeat, Lock
+  Wallet, Loader, Calendar, PiggyBank, Repeat, Lock, Bot  
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -612,34 +612,72 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
       </div>
 
       <motion.div 
-        className="recent-section"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.6 }}
-      >
-        <div className="card-header">
-          <h3>RECENT ACTIVITY</h3>
-          <div className="tag">LAST 5</div>
+  className="recent-section"
+  initial={{ opacity: 0, y: 20 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.4, delay: 0.5 }}
+>
+  <div className="card-header">
+    <h3>RECENT ACTIVITY</h3>
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <span className="tag vault-tag">VAULT</span>
+      <span className="tag agent-tag">AGENT</span>
+    </div>
+  </div>
+  <div className="recent-list">
+    {transactions.length > 0 ? (
+      transactions.slice(0, 8).map((tx) => (
+        <div 
+          key={tx.id} 
+          className={`recent-row ${tx.isAgentTx ? 'agent-tx' : 'vault-tx'}`}
+        >
+          <div className={`status-icon ${tx.executed ? 'success' : tx.revoked ? 'danger' : 'warn'} ${tx.isAgentTx ? 'agent' : ''}`}>
+            {tx.isAgentTx ? (
+              <Bot size={14} />
+            ) : tx.executed ? (
+              <CheckCircle size={14}/>
+            ) : tx.revoked ? (
+              <XCircle size={14}/>
+            ) : (
+              <Clock size={14}/>
+            )}
+          </div>
+          <div className="tx-details">
+            <div className="tx-type-label">
+              {tx.isAgentTx ? (
+                <span className="agent-label">{tx.displayLabel || 'AGENT TX'}</span>
+              ) : (
+                <span className="vault-label">VAULT TX #{tx.id}</span>
+              )}
+            </div>
+            <div className="tx-amt">{parseFloat(tx.amount).toFixed(2)} MNEE</div>
+            <div className="tx-to">
+              {tx.isAgentTx ? 'TO: ' : 'TO: '}
+              {tx.vendor?.slice(0, 10)}...
+            </div>
+          </div>
+          <div className="tx-meta">
+            <div className="tx-time">
+              {new Date(tx.timestamp * 1000).toLocaleTimeString()}
+            </div>
+            {tx.txHash && (
+              <a 
+                href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tx-link"
+              >
+                VIEW
+              </a>
+            )}
+          </div>
         </div>
-        <div className="recent-list">
-          {transactions.length > 0 ? (
-            transactions.slice(0, 5).map((tx) => (
-              <div key={tx.id} className="recent-row">
-                <div className={`status-icon ${tx.executed ? 'success' : tx.revoked ? 'danger' : 'warn'}`}>
-                  {tx.executed ? <CheckCircle size={14}/> : tx.revoked ? <XCircle size={14}/> : <Clock size={14}/>}
-                </div>
-                <div className="tx-details">
-                  <div className="tx-amt">{parseFloat(tx.amount).toFixed(2)} MNEE</div>
-                  <div className="tx-to">TO: {tx.vendor.slice(0, 10)}...</div>
-                </div>
-                <div className="tx-time">{new Date(tx.timestamp * 1000).toLocaleTimeString()}</div>
-              </div>
-            ))
-          ) : (
-            <div className="empty-list">NO RECENT TRANSACTIONS</div>
-          )}
-        </div>
-      </motion.div>
+      ))
+    ) : (
+      <div className="empty-list">NO RECENT TRANSACTIONS</div>
+    )}
+  </div>
+</motion.div>
 
       <style jsx>{`
         .dashboard-layout { display: flex; flex-direction: column; gap: 32px; }
@@ -787,6 +825,71 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
           .chart-card { padding: 12px; }
           .chart-title { font-size: 11px; }
         }
+        .recent-row.agent-tx {
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.recent-row.vault-tx {
+  border-color: var(--border-color, #ffcc00);
+  background: var(--bg-secondary, #252525);
+}
+
+.status-icon.agent {
+  background: #60a5fa;
+  border-color: #60a5fa;
+  color: white;
+}
+
+.status-icon.agent.success {
+  background: #60a5fa;
+  color: white;
+}
+
+.tx-type-label {
+  font-size: 9px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.agent-label {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.2);
+  padding: 2px 6px;
+  border: 1px solid #60a5fa;
+}
+
+.vault-label {
+  color: var(--text-muted, #b38f00);
+}
+
+.tag.vault-tag {
+  background: var(--text-primary, #ffcc00);
+  color: var(--bg-primary, #1a1a1a);
+}
+
+.tag.agent-tag {
+  background: #60a5fa;
+  color: white;
+}
+
+.tx-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.tx-link {
+  font-size: 9px;
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.tx-link:hover {
+  text-decoration: underline;
+}
       `}</style>
     </div>
   );

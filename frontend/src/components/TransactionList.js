@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock, CheckCircle, XCircle, AlertTriangle, Search,
   Filter, ChevronDown, ExternalLink, Copy, Shield,
-  ArrowUpRight, MoreVertical, Ban, Eye, Loader, X
+  ArrowUpRight, MoreVertical, Ban, Eye, Loader, X, Bot
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 
@@ -258,25 +258,34 @@ const RevokeModal = ({ isOpen, onClose, onConfirm, txId, isLoading }) => {
   );
 };
 
-const StatusBadge = ({ status }) => {
+const StatusBadge = ({ status, isAgentTx }) => {
   const config = {
     executed: { icon: CheckCircle, label: 'EXECUTED', color: 'var(--accent-emerald)', bg: 'rgba(0, 204, 102, 0.2)' },
     pending: { icon: Clock, label: 'PENDING', color: 'var(--accent-amber)', bg: 'rgba(255, 204, 0, 0.2)' },
     ready: { icon: CheckCircle, label: 'READY', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.2)' },
     revoked: { icon: XCircle, label: 'REVOKED', color: 'var(--accent-red)', bg: 'rgba(255, 59, 48, 0.2)' },
-timelocked: { 
+    timelocked: { 
       icon: () => <img src={sentinelLogo} alt="" style={{ width: '14px', height: '14px' }} />, 
       label: 'LOCKED', 
       color: 'var(--accent-blue)', 
       bg: 'rgba(0, 102, 255, 0.2)' 
-    }
+    },
+    // Agent transaction statuses
+    agent_success: { icon: Bot, label: 'AGENT TX', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.2)' },
+    agent_failed: { icon: XCircle, label: 'FAILED', color: 'var(--accent-red)', bg: 'rgba(255, 59, 48, 0.2)' }
   };
 
-  const { icon: Icon, label, color, bg } = config[status] || config.pending;
+  // Determine the status key
+  let statusKey = status;
+  if (isAgentTx) {
+    statusKey = status === 'success' || status === 'executed' ? 'agent_success' : 'agent_failed';
+  }
+
+  const { icon: Icon, label, color, bg } = config[statusKey] || config.pending;
 
   return (
     <div className="status-badge" style={{ backgroundColor: bg, color: color, borderColor: color }}>
-      <Icon size={10} strokeWidth={3} />
+      {typeof Icon === 'function' ? <Icon size={10} strokeWidth={3} /> : Icon}
       <span>{label}</span>
       <style jsx>{`
         .status-badge {
@@ -324,15 +333,27 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
   const [showActions, setShowActions] = useState(false);
   const [, setTick] = useState(0);
   
+  // Check if this is an agent transaction
+  const isAgentTx = tx.isAgentTx || tx.txType === 'agent';
+  
   useEffect(() => {
+    // Only set up timer for vault transactions with timelock
+    if (isAgentTx) return;
+    
     const now = Math.floor(Date.now() / 1000);
     if (!tx.executed && !tx.revoked && tx.executeAfter && tx.executeAfter > now) {
       const timer = setInterval(() => setTick(t => t + 1), 1000);
       return () => clearInterval(timer);
     }
-  }, [tx.executed, tx.revoked, tx.executeAfter]);
+  }, [tx.executed, tx.revoked, tx.executeAfter, isAgentTx]);
   
   const getStatus = () => {
+    // Agent transactions have simpler status
+    if (isAgentTx) {
+      return tx.status === 'success' ? 'executed' : tx.status === 'failed' ? 'revoked' : 'pending';
+    }
+    
+    // Vault transaction status logic
     if (tx.executed) return 'executed';
     if (tx.revoked) return 'revoked';
     const now = Math.floor(Date.now() / 1000);
@@ -399,6 +420,180 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
     action(...args);
   };
 
+  return (
+    <motion.div
+      className={`tx-row ${isExpanded ? 'expanded' : ''} ${isAgentTx ? 'agent-tx-row' : ''}`}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      layout
+    >
+      <div className="tx-main" onClick={onToggle}>
+        <div className="col id-col">
+          {isAgentTx ? (
+            <>
+              <span className="tx-hash agent-hash">
+                <Bot size={12} /> {tx.displayLabel || 'AGENT'}
+              </span>
+              <StatusBadge status={status} isAgentTx={true} />
+            </>
+          ) : (
+            <>
+              <span className="tx-hash">#{tx.id}</span>
+              <StatusBadge status={status} isAgentTx={false} />
+            </>
+          )}
+        </div>
+
+        {/* Amount column */}
+        <div className="col amount-col">
+          <span className="amount-value">{parseFloat(tx.amount).toLocaleString()}</span>
+          <span className="amount-token">MNEE</span>
+        </div>
+
+        {/* Address column */}
+        <div className="col address-col">
+          {!isAgentTx && (
+            <div className="addr-pair">
+              <span className="addr-label">FROM</span>
+              <span className="addr-val" onClick={(e) => { e.stopPropagation(); copyAddress(tx.agent); }}>
+                {tx.agent?.slice(0, 6)}...{tx.agent?.slice(-4)} <Copy size={10} />
+              </span>
+            </div>
+          )}
+          <div className="addr-pair">
+            <span className="addr-label">TO</span>
+            <span className="addr-val" onClick={(e) => { e.stopPropagation(); copyAddress(tx.vendor); }}>
+              {tx.vendor?.slice(0, 6)}...{tx.vendor?.slice(-4)} <Copy size={10} />
+            </span>
+          </div>
+        </div>
+
+        {/* Risk column - N/A for agent transactions */}
+        <div className="col risk-col">
+          {isAgentTx ? (
+            <span className="agent-indicator">AUTOMATED</span>
+          ) : (
+            <RiskIndicator score={calculateRiskScore()} />
+          )}
+        </div>
+
+        {/* Time column */}
+        <div className="col time-col">
+          <span>{formatTime(tx.timestamp)}</span>
+          {!isAgentTx && status === 'pending' && tx.executeAfter && (
+            <span className="time-lock"><Clock size={10}/> {timeUntilExecutable()}</span>
+          )}
+          {isAgentTx && tx.txHash && (
+            <a 
+              href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tx-hash-link"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={10} /> TX
+            </a>
+          )}
+        </div>
+
+        {/* Actions column - only for vault transactions */}
+        <div className="col actions-col">
+          {!isAgentTx && isPending && (
+            <button
+              className={`action-trigger ${showActions ? 'active' : ''}`}
+              onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
+              disabled={isLoading}
+            >
+              {isLoading ? <Loader size={14} className="spin" /> : <MoreVertical size={14} />}
+            </button>
+          )}
+        </div>
+
+        <div className="col expand-col">
+          <ChevronDown size={14} className={isExpanded ? 'rotated' : ''} />
+        </div>
+      </div>
+
+      {/* Action dropdown - only for vault transactions */}
+      {!isAgentTx && showActions && (
+        <div className="actions-dropdown">
+          {canExecute() && (
+            <button onClick={(e) => handleActionClick(e, onExecute, tx.id)}>
+              <CheckCircle size={12} /> EXECUTE NOW
+            </button>
+          )}
+          <button className="danger" onClick={(e) => handleActionClick(e, onRevoke, tx.id)}>
+            <Ban size={12} /> REVOKE
+          </button>
+        </div>
+      )}
+
+      {/* Expanded details */}
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div 
+            className="tx-expanded"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+          >
+            <div className="detail-grid">
+              {isAgentTx ? (
+                <>
+                  <div className="detail-item">
+                    <span className="detail-label">TYPE</span>
+                    <span className="detail-value">{tx.executionType || 'Agent Transaction'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">DESTINATION</span>
+                    <span className="detail-value mono">{tx.vendor}</span>
+                  </div>
+                  {tx.txHash && (
+                    <div className="detail-item">
+                      <span className="detail-label">TX HASH</span>
+                      <a 
+                        href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="detail-value mono link"
+                      >
+                        {tx.txHash.slice(0, 20)}... <ExternalLink size={10} />
+                      </a>
+                    </div>
+                  )}
+                  <div className="detail-item">
+                    <span className="detail-label">STATUS</span>
+                    <span className={`detail-value ${tx.status === 'success' ? 'success' : 'error'}`}>
+                      {tx.status?.toUpperCase() || 'UNKNOWN'}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Existing vault transaction details */}
+                  <div className="detail-item">
+                    <span className="detail-label">AGENT</span>
+                    <span className="detail-value mono">{tx.agent}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">VENDOR</span>
+                    <span className="detail-value mono">{tx.vendor}</span>
+                  </div>
+                  {tx.reason && (
+                    <div className="detail-item">
+                      <span className="detail-label">REASON</span>
+                      <span className="detail-value">{tx.reason}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
   return (
     <motion.div
       className={`tx-row ${isExpanded ? 'expanded' : ''}`}
@@ -552,6 +747,7 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
       </AnimatePresence>
 
       <style jsx>{`
+      
         .tx-row {
           background: var(--bg-card, #2a2a2a);
           border: 2px solid var(--border-color, #ffcc00);
@@ -650,8 +846,6 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
       `}</style>
     </motion.div>
   );
-};
-
 export default function TransactionList({ transactions = [], onRevoke, onExecute, contract }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -661,24 +855,37 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [pendingRevokeTxId, setPendingRevokeTxId] = useState(null);
 
-  const filteredTxs = transactions.filter(tx => {
-    const matchesSearch = !searchTerm ||
-      tx.agent.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.vendor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.id.toString().includes(searchTerm);
-
-    const getStatus = (t) => {
-      if (t.executed) return 'executed';
-      if (t.revoked) return 'revoked';
-      const now = Math.floor(Date.now() / 1000);
-      if (t.executeAfter && t.executeAfter <= now) return 'ready';
-      return 'pending';
-    };
-    const status = getStatus(tx);
-    const matchesStatus = statusFilter === 'all' || status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
+ const filteredTxs = transactions.filter(tx => {
+  const isAgentTx = tx.isAgentTx || tx.txType === 'agent';
+  
+  // Status filter
+  if (statusFilter !== 'all') {
+    if (statusFilter === 'agent') {
+      if (!isAgentTx) return false;
+    } else if (isAgentTx) {
+      // For agent txs, map status filter
+      if (statusFilter === 'executed' && tx.status !== 'success') return false;
+      if (statusFilter === 'revoked' && tx.status !== 'failed') return false;
+      if (statusFilter === 'pending' && tx.status === 'success') return false;
+    } else {
+      // Vault tx filter logic
+      const txStatus = tx.executed ? 'executed' : tx.revoked ? 'revoked' : 
+                       (tx.executeAfter <= Date.now()/1000) ? 'ready' : 'pending';
+      if (statusFilter !== txStatus) return false;
+    }
+  }
+  
+  // Search filter
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase();
+    const searchableFields = [
+      tx.agent, tx.vendor, tx.id?.toString(), tx.txHash, tx.displayLabel
+    ].filter(Boolean);
+    return searchableFields.some(f => f.toLowerCase().includes(term));
+  }
+  
+  return true;
+});
 
   const openRevokeModal = (txId) => {
     setPendingRevokeTxId(txId);
@@ -807,13 +1014,14 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
 
         <div className="filter-group">
           <Filter size={14} />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">ALL STATUS</option>
-            <option value="pending">PENDING</option>
-            <option value="ready">READY</option>
-            <option value="executed">EXECUTED</option>
-            <option value="revoked">REVOKED</option>
-          </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+  <option value="all">ALL STATUS</option>
+  <option value="pending">PENDING</option>
+  <option value="ready">READY</option>
+  <option value="executed">EXECUTED</option>
+  <option value="revoked">REVOKED</option>
+  <option value="agent">AGENT TXS</option>  {/* ADD THIS */}
+</select>
         </div>
       </div>
 
@@ -947,6 +1155,65 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
           .list-controls { flex-direction: column; }
           .search-box { width: 100%; }
         }
+.tx-row.agent-tx-row {
+  border-left: 4px solid #60a5fa;
+}
+
+.tx-row.agent-tx-row .tx-main {
+  background: rgba(96, 165, 250, 0.05);
+}
+
+.tx-row.agent-tx-row:hover .tx-main {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.agent-hash {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #60a5fa;
+}
+
+.agent-indicator {
+  font-size: 10px;
+  font-weight: 700;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
+  padding: 4px 8px;
+  border: 1px solid #60a5fa;
+  font-family: var(--font-pixel);
+}
+
+.tx-hash-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.tx-hash-link:hover {
+  text-decoration: underline;
+}
+
+.detail-value.success {
+  color: var(--accent-emerald);
+}
+
+.detail-value.error {
+  color: var(--accent-red);
+}
+
+.detail-value.link {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.detail-value.link:hover {
+  text-decoration: underline;
+}
       `}</style>
     </div>
   );
