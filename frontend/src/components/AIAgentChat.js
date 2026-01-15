@@ -1157,6 +1157,19 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     
     if (receipt.status === 1) {
       addSystemMessage(`✅ Funded agent wallet with ${amount} MNEE from vault!`, 'success');
+      
+      // LOG THE FUNDING TRANSACTION
+      await logAgentTransaction({
+        user_address: account,
+        agent_address: agentManager.getAddress(),
+        tx_type: 'funding',
+        amount: parseFloat(amount),
+        destination: agentManager.getAddress(),
+        destination_name: 'Agent Wallet',
+        tx_hash: receipt.hash,
+        status: 'success'
+      });
+      
       await loadAgentBalance();
       onAgentWalletUpdate && onAgentWalletUpdate();
       onTransactionCreated && onTransactionCreated();
@@ -1168,11 +1181,39 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       };
     } else {
       addSystemMessage(`❌ Transfer transaction failed.`, 'danger');
+      
+      // LOG FAILED FUNDING
+      await logAgentTransaction({
+        user_address: account,
+        agent_address: agentManager.getAddress(),
+        tx_type: 'funding',
+        amount: parseFloat(amount),
+        destination: agentManager.getAddress(),
+        destination_name: 'Agent Wallet',
+        status: 'failed',
+        error_message: 'Transfer transaction failed'
+      });
+      
       return null;
     }
     
   } catch (err) {
     console.error('Fund agent error:', err);
+    
+    // LOG FAILED FUNDING
+    await logAgentTransaction({
+      user_address: account,
+      agent_address: agentManager?.getAddress(),
+      tx_type: 'funding',
+      amount: parseFloat(amount),
+      destination: agentManager?.getAddress(),
+      destination_name: 'Agent Wallet',
+      status: 'failed',
+      error_message: err.code === 'ACTION_REJECTED' || err.code === 4001 
+        ? 'User cancelled transaction' 
+        : (err.reason || err.message)
+    });
+    
     if (err.code === 'ACTION_REJECTED' || err.code === 4001) {
       addSystemMessage(`❌ Transaction cancelled by user.`, 'warning');
     } else {
@@ -1257,6 +1298,19 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
 
       if (result.success) {
         addSystemMessage(`✅ Withdrawn ${result.amount} MNEE to vault`, 'success');
+        
+        // LOG THE WITHDRAWAL TRANSACTION
+        await logAgentTransaction({
+          user_address: account,
+          agent_address: agentManager.getAddress(),
+          tx_type: 'withdrawal',
+          amount: parseFloat(result.amount),
+          destination: vaultAddress,
+          destination_name: 'Vault',
+          tx_hash: result.txHash,
+          status: 'success'
+        });
+        
         await loadAgentBalance();
         onAgentWalletUpdate && onAgentWalletUpdate();
         
@@ -1268,6 +1322,18 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       }
     } catch (err) {
       addSystemMessage(`❌ Withdrawal failed: ${err.message}`, 'danger');
+      
+      // LOG FAILED WITHDRAWAL
+      await logAgentTransaction({
+        user_address: account,
+        agent_address: agentManager.getAddress(),
+        tx_type: 'withdrawal',
+        amount: parseFloat(amount) || 0,
+        destination: vaultAddress,
+        destination_name: 'Vault',
+        status: 'failed',
+        error_message: err.message
+      });
     }
     return null;
   };
@@ -1301,6 +1367,19 @@ const withdrawFromSavingsPlan = async (plan) => {
       if (result.success) {
         addSystemMessage(`✅ Withdrawn ${plan.totalSaved || plan.amount} MNEE to vault!`, 'success');
         
+        // LOG THE SAVINGS WITHDRAWAL
+        await logAgentTransaction({
+          user_address: account,
+          agent_address: agentManager.getAddress(),
+          tx_type: 'savings_withdrawal',
+          amount: parseFloat(plan.totalSaved || plan.amount),
+          destination: vaultAddress,
+          destination_name: 'Vault',
+          tx_hash: result.txHash,
+          status: 'success',
+          savings_plan_id: plan.id
+        });
+        
         // Update plan as withdrawn
         setSavingsPlans(prev => prev.map(p => 
           p.id === plan.id ? { ...p, withdrawn: true } : p
@@ -1313,18 +1392,48 @@ const withdrawFromSavingsPlan = async (plan) => {
         onAgentWalletUpdate && onAgentWalletUpdate();
         onTransactionCreated && onTransactionCreated();
       } else {
+        let errorMsg = 'Unknown error';
         if (result.daysRemaining) {
+          errorMsg = `Plan still locked. ${result.daysRemaining} days remaining`;
           addSystemMessage(`❌ Plan still locked. ${result.daysRemaining} days remaining.`, 'danger');
         } else if (result.needsGas) {
+          errorMsg = 'Insufficient ETH for gas';
           addSystemMessage(`❌ No ETH for gas. Fund agent wallet with ETH first.`, 'danger');
           addSystemMessage(`💡 Say "fund agent with 0.01 eth" to add gas.`, 'info');
         } else {
+          errorMsg = result.error;
           addSystemMessage(`❌ ${result.error}`, 'danger');
         }
+        
+        // LOG FAILED SAVINGS WITHDRAWAL
+        await logAgentTransaction({
+          user_address: account,
+          agent_address: agentManager.getAddress(),
+          tx_type: 'savings_withdrawal',
+          amount: parseFloat(plan.totalSaved || plan.amount),
+          destination: vaultAddress,
+          destination_name: 'Vault',
+          status: 'failed',
+          savings_plan_id: plan.id,
+          error_message: errorMsg
+        });
       }
     } catch (err) {
       console.error('Withdraw savings error:', err);
       addSystemMessage(`❌ Withdrawal failed: ${err.message}`, 'danger');
+      
+      // LOG ERROR
+      await logAgentTransaction({
+        user_address: account,
+        agent_address: agentManager.getAddress(),
+        tx_type: 'savings_withdrawal',
+        amount: parseFloat(plan.totalSaved || plan.amount),
+        destination: vaultAddress,
+        destination_name: 'Vault',
+        status: 'failed',
+        savings_plan_id: plan.id,
+        error_message: err.message
+      });
     } finally {
       setWithdrawingPlanId(null);
     }
@@ -2000,6 +2109,82 @@ const loadFromBackend = async () => {
                 ? { ...m, content: `Please confirm the ${intent.amount} MNEE transfer in the Agent Wallet panel.`, provider: AI_PROVIDERS[selectedProvider].name }
                 : m
             ));
+            break;
+
+          case 'deposit_savings':
+            // Manual deposit to existing savings plan
+            if (!intent.planId) {
+              addSystemMessage(`❌ No savings plan ID specified.`, 'danger');
+              break;
+            }
+            try {
+              const plan = savingsPlans.find(p => p.id === intent.planId || p.contractPlanId === intent.planId);
+              if (!plan) {
+                addSystemMessage(`❌ Savings plan not found.`, 'danger');
+                break;
+              }
+              
+              const depositAmount = parseFloat(intent.amount) || plan.amount;
+              
+              if (!agentManager?.hasWallet()) {
+                addSystemMessage(`❌ Agent wallet not available.`, 'danger');
+                break;
+              }
+              
+              const agentBal = parseFloat(agentBalance || '0');
+              if (agentBal < depositAmount) {
+                addSystemMessage(`❌ Insufficient agent wallet balance. Have: ${agentBal}, need: ${depositAmount}`, 'danger');
+                break;
+              }
+              
+              addSystemMessage(`⏳ Depositing ${depositAmount} MNEE to "${plan.name}"...`, 'info');
+              
+              const result = await agentManager.depositToSavings(provider, plan.contractPlanId, depositAmount.toString());
+              
+              if (result.success) {
+                addSystemMessage(`✅ Deposited ${depositAmount} MNEE to savings!`, 'success');
+                
+                // LOG THE DEPOSIT
+                await logAgentTransaction({
+                  user_address: account,
+                  agent_address: agentManager.getAddress(),
+                  tx_type: 'savings_deposit',
+                  amount: depositAmount,
+                  destination: agentManager?.networkConfig?.savingsContract || '',
+                  destination_name: plan.name,
+                  tx_hash: result.txHash,
+                  status: 'success',
+                  savings_plan_id: plan.id
+                });
+                
+                // Update local state
+                setSavingsPlans(prev => prev.map(p => 
+                  p.id === plan.id 
+                    ? { ...p, totalSaved: (p.totalSaved || 0) + depositAmount, depositsCompleted: (p.depositsCompleted || 0) + 1 }
+                    : p
+                ));
+                
+                await loadAgentBalance();
+                onAgentWalletUpdate && onAgentWalletUpdate();
+              } else {
+                addSystemMessage(`❌ Deposit failed: ${result.error}`, 'danger');
+                
+                // LOG FAILED DEPOSIT
+                await logAgentTransaction({
+                  user_address: account,
+                  agent_address: agentManager.getAddress(),
+                  tx_type: 'savings_deposit',
+                  amount: depositAmount,
+                  destination: agentManager?.networkConfig?.savingsContract || '',
+                  destination_name: plan.name,
+                  status: 'failed',
+                  savings_plan_id: plan.id,
+                  error_message: result.error
+                });
+              }
+            } catch (err) {
+              addSystemMessage(`❌ Deposit error: ${err.message}`, 'danger');
+            }
             break;
 
           default:
