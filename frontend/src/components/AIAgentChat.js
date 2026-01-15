@@ -556,16 +556,17 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
               if (result.success) {
                 addSystemMessage(`✅ SENT: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
                 // LOG THE TRANSACTION
-    await logAgentTransaction({
-      user_address: account,
-      agent_address: agentManager.getAddress(),
-      tx_type: 'payment',
-      amount: parseFloat(amount),
-      destination: vendorAddress,
-      destination_name: vendorName,
-      tx_hash: result.txHash,
-      status: 'success'
-    });
+                await logAgentTransaction({
+                  user_address: account,
+                  agent_address: agentManager.getAddress(),
+                  tx_type: 'schedule',
+                  amount: schedule.amount,
+                  destination: schedule.vendorAddress,
+                  destination_name: schedule.vendor,
+                  tx_hash: result.txHash,
+                  status: 'success',
+                  schedule_id: schedule.id
+                });
                
                 setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false } : s));
                 await loadAgentBalance();
@@ -573,15 +574,16 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
               } else {
                 addSystemMessage(`❌ FAILED: ${result.error}`, 'danger');
                 await logAgentTransaction({
-      user_address: account,
-      agent_address: agentManager.getAddress(),
-      tx_type: 'payment',
-      amount: parseFloat(amount),
-      destination: vendorAddress,
-      destination_name: vendorName,
-      status: 'failed',
-      error_message: result.error
-    });
+                  user_address: account,
+                  agent_address: agentManager.getAddress(),
+                  tx_type: 'schedule',
+                  amount: schedule.amount,
+                  destination: schedule.vendorAddress,
+                  destination_name: schedule.vendor,
+                  status: 'failed',
+                  schedule_id: schedule.id,
+                  error_message: result.error
+                });
               }
             } catch (err) {
               addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
@@ -609,6 +611,19 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
                 if (result.success) {
                   addSystemMessage(`✅ DEPOSITED: ${plan.amount} MNEE to savings`, 'success');
                   
+                  // LOG THE SAVINGS DEPOSIT
+                  await logAgentTransaction({
+                    user_address: account,
+                    agent_address: agentManager.getAddress(),
+                    tx_type: 'savings_deposit',
+                    amount: plan.amount,
+                    destination: agentManager?.networkConfig?.savingsContract || '',
+                    destination_name: plan.name,
+                    tx_hash: result.txHash,
+                    status: 'success',
+                    savings_plan_id: plan.id
+                  });
+                  
                   try {
                    const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
                     const synced = await syncSavingsWithBlockchain(
@@ -624,6 +639,18 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
                 }
               } catch (err) {
                 addSystemMessage(`❌ Deposit failed: ${err.message}`, 'danger');
+                // LOG FAILED DEPOSIT
+                await logAgentTransaction({
+                  user_address: account,
+                  agent_address: agentManager.getAddress(),
+                  tx_type: 'savings_deposit',
+                  amount: plan.amount,
+                  destination: agentManager?.networkConfig?.savingsContract || '',
+                  destination_name: plan.name,
+                  status: 'failed',
+                  savings_plan_id: plan.id,
+                  error_message: err.message
+                });
               }
             }
 
@@ -938,21 +965,21 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           }
         } catch (err) {
           addSystemMessage(`❌ FAILED: ${err.message}. Falling back to vault...`, 'danger');
-      // Log failed transaction
-      await logAgentTransaction({
-        user_address: account,
-        agent_address: agentManager.getAddress(),
-        tx_type: 'schedule',
-        amount: schedule.amount,
-        destination: schedule.vendorAddress,
-        destination_name: schedule.vendor,
-        status: 'failed',
-        schedule_id: schedule.id,
-        error_message: result.error
-      });
-    }
-  } 
-};
+          // Log failed transaction
+          await logAgentTransaction({
+            user_address: account,
+            agent_address: agentManager.getAddress(),
+            tx_type: 'schedule',
+            amount: schedule.amount,
+            destination: schedule.vendorAddress,
+            destination_name: schedule.vendor,
+            status: 'failed',
+            schedule_id: schedule.id,
+            error_message: err.message
+          });
+        }
+      }
+    };
 
     addSystemMessage(`⚡ EXECUTING SCHEDULED PAYMENT VIA VAULT...`, 'info');
     
@@ -1842,135 +1869,145 @@ const loadFromBackend = async () => {
       if (intent) {
         switch (intent.action) {
           case 'payment':
-            addMessage(cleanResponse, false, { provider: AI_PROVIDERS[selectedProvider].name });
+            // Update existing streaming message instead of adding new one
             const paymentResult = await executePayment(intent);
-            if (paymentResult) {
-              setMessages(prev => {
-                const updated = [...prev];
-                const lastAgentMsg = updated.filter(m => !m.isUser && !m.isSystem).pop();
-                if (lastAgentMsg) lastAgentMsg.payment = paymentResult;
-                return updated;
-              });
-            }
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse, payment: paymentResult, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'schedule':
             const scheduleResult = await createSchedule(intent);
-            if (scheduleResult) {
-              addMessage(cleanResponse, false, { 
-                provider: AI_PROVIDERS[selectedProvider].name,
-                schedule: scheduleResult
-              });
-            }
+            // Update existing streaming message instead of adding new one
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse, schedule: scheduleResult, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'savings':
             const savingsResult = await createSavingsPlan(intent);
-            if (savingsResult) {
-              addMessage(cleanResponse, false, { 
-                provider: AI_PROVIDERS[selectedProvider].name,
-                savings: savingsResult
-              });
-            }
+            // Update existing streaming message instead of adding new one
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse, savings: savingsResult, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'view_schedules':
             setShowSchedulePanel(true);
-            addMessage(`You have ${schedules.length} scheduled payment(s). Check the panel on the right!`, false, { 
-              provider: AI_PROVIDERS[selectedProvider].name 
-            });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: `You have ${schedules.length} scheduled payment(s). Check the panel on the right!`, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'view_savings':
             setShowSchedulePanel(true);
-            addMessage(`You have ${savingsPlans.length} savings plan(s). Check the panel on the right!`, false, { 
-              provider: AI_PROVIDERS[selectedProvider].name 
-            });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: `You have ${savingsPlans.length} savings plan(s). Check the panel on the right!`, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'cancel_schedule':
             cancelScheduleOrSavings('schedule', intent.id);
-            addMessage(cleanResponse || 'Schedule cancelled.', false, { provider: AI_PROVIDERS[selectedProvider].name });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse || 'Schedule cancelled.', provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'cancel_savings':
             cancelScheduleOrSavings('savings', intent.id);
-            addMessage(cleanResponse || 'Savings plan cancelled.', false, { provider: AI_PROVIDERS[selectedProvider].name });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse || 'Savings plan cancelled.', provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'fund_agent':
             const fundResult = await fundAgentWallet(parseFloat(intent.amount));
-            addMessage(cleanResponse || 'Check the Agent Wallet panel to fund.', false, { 
-              provider: AI_PROVIDERS[selectedProvider].name,
-              agentWallet: fundResult
-            });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse || 'Check the Agent Wallet panel to fund.', agentWallet: fundResult, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
-case 'fund_agent_eth':
+
+          case 'fund_agent_eth':
             const ethResult = await fundAgentWithEth(intent.amount);
-            if (ethResult?.success) {
-              addMessage(`Funded agent wallet with ${ethResult.amount} ETH for gas.`, false, { 
-                provider: AI_PROVIDERS[selectedProvider].name
-              });
-            } else {
-              addMessage(cleanResponse || `Use the Agent Wallet panel to fund with ETH.`, false, { provider: AI_PROVIDERS[selectedProvider].name });
-            }
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: ethResult?.success ? `Funded agent wallet with ${ethResult.amount} ETH for gas.` : (cleanResponse || 'Use the Agent Wallet panel to fund with ETH.'), provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
+
           case 'withdraw_agent':
             const withdrawResult = await withdrawFromAgent(parseFloat(intent.amount) || 0);
-            addMessage(cleanResponse || (withdrawResult ? `Withdrawn. New balance: ${withdrawResult.balance} MNEE` : 'Withdrawal failed.'), false, { 
-              provider: AI_PROVIDERS[selectedProvider].name,
-              agentWallet: withdrawResult
-            });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: cleanResponse || (withdrawResult ? `Withdrawn. New balance: ${withdrawResult.balance} MNEE` : 'Withdrawal failed.'), agentWallet: withdrawResult, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'agent_balance':
             const balanceResult = await checkAgentBalanceAction();
-            addMessage(`Your Agent Wallet balance is ${balanceResult.balance} MNEE.`, false, { 
-              provider: AI_PROVIDERS[selectedProvider].name,
-              agentWallet: balanceResult
-            });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: `Your Agent Wallet balance is ${balanceResult.balance} MNEE.`, agentWallet: balanceResult, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           case 'vault_balance':
-        try {
-          if (!contract) {
-            addSystemMessage(`❌ Vault not connected.`, 'danger');
-            break;
-          }
-          const vaultBal = await contract.getVaultBalance();
-          const formatted = ethers.formatUnits(vaultBal, 18);
-          const balanceValue = parseFloat(formatted).toFixed(2);
-          
-          setMessages(prev => [...prev, {
-            id: Date.now(),
-            content: aiResponse,
-            isUser: false,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            provider: AI_PROVIDERS[selectedProvider].name,
-            vaultInfo: {
-              balance: balanceValue,
-              action: 'VAULT_BALANCE_CHECKED'
+            try {
+              if (!contract) {
+                addSystemMessage(`❌ Vault not connected.`, 'danger');
+                break;
+              }
+              const vaultBal = await contract.getVaultBalance();
+              const formatted = ethers.formatUnits(vaultBal, 18);
+              const balanceValue = parseFloat(formatted).toFixed(2);
+              
+              setMessages(prev => prev.map(m => 
+                m.id === streamId 
+                  ? { ...m, content: cleanResponse || `Your vault balance is ${balanceValue} MNEE.`, vaultInfo: { balance: balanceValue, action: 'VAULT_BALANCE_CHECKED' }, provider: AI_PROVIDERS[selectedProvider].name }
+                  : m
+              ));
+              
+              addSystemMessage(`💰 VAULT BALANCE: ${balanceValue} MNEE`, 'success');
+            } catch (err) {
+              console.error('Vault balance error:', err);
+              addSystemMessage(`❌ Could not get vault balance: ${err.message}`, 'danger');
             }
-          }]);
-          
-          addSystemMessage(`💰 VAULT BALANCE: ${balanceValue} MNEE`, 'success');
-        } catch (err) {
-          console.error('Vault balance error:', err);
-          addSystemMessage(`❌ Could not get vault balance: ${err.message}`, 'danger');
-        }
-        break;  
+            break;  
 
           case 'confirm_topup':
             await fundAgentWallet(intent.amount);
-            addMessage(`Please confirm the ${intent.amount} MNEE transfer in the Agent Wallet panel.`, false, { provider: AI_PROVIDERS[selectedProvider].name });
+            setMessages(prev => prev.map(m => 
+              m.id === streamId 
+                ? { ...m, content: `Please confirm the ${intent.amount} MNEE transfer in the Agent Wallet panel.`, provider: AI_PROVIDERS[selectedProvider].name }
+                : m
+            ));
             break;
 
           default:
-            addMessage(cleanResponse || aiResponse, false, { provider: AI_PROVIDERS[selectedProvider].name });
+            // Already updated via streaming, no action needed
+            break;
         }
-      } else {
-        addMessage(cleanResponse || aiResponse, false, { provider: AI_PROVIDERS[selectedProvider].name });
       }
+      // If no intent, the streaming message already has the response
     } catch (err) {
       addSystemMessage(`SYSTEM ERROR: ${err.message}`, 'danger');
     } finally {

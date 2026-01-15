@@ -1260,7 +1260,8 @@ async def get_execution_history_endpoint(
     history = get_execution_history(user_address, limit)
     return {"history": history, "count": len(history)}
 
-    @app.post("/api/v1/agent/transactions")
+
+@app.post("/api/v1/agent/transactions")
 @limiter.limit("60/minute")
 async def log_agent_transaction(
     request: Request,
@@ -1407,4 +1408,3 @@ if __name__ == "__main__":
         reload=False,
         log_level="info"
     )
-
