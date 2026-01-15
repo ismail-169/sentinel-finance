@@ -58,7 +58,7 @@ const AI_PROVIDERS = {
 
 const getSystemPrompt = (trustedVendors, schedules, savingsPlans, hasAgentWallet, agentBalance, pendingTopUp) => {
   const vendorList = trustedVendors.length > 0 ? trustedVendors.map(v => `- ${v.name}: ${v.address}`).join('\n') : '(No trusted vendors)';
-  const scheduleList = schedules.length > 0 ? schedules.map(s => `- ${s.amount} MNEE to ${s.vendor} (${s.frequency})`).join('\n') : '(No scheduled payments)';
+  const scheduleList = schedules.length > 0 ? schedules.map(s => `- ${s.amount} MNEE to ${s.vendor} (${s.displayFrequency || s.frequency})`).join('\n') : '(No scheduled payments)';
    const savingsList = savingsPlans.length > 0 ? savingsPlans.map(s => `- ${s.name}: ${s.amount} MNEE/${s.frequency} at ${s.executionTime || 'anytime'}, locked ${s.lockDays} days`).join('\n') : '(No savings plans)';
   const agentWalletInfo = hasAgentWallet ? `\n\nAGENT WALLET STATUS:\n- Connected: Yes\n- Balance: ${agentBalance} MNEE\n- Can execute automated payments without popups` : '\n\nAGENT WALLET STATUS:\n- Not initialized (user needs to set up in Agent Wallet panel)';
 
@@ -78,7 +78,11 @@ PAYMENT ROUTING RULES:
 
 RESPONSE FORMAT - Always include JSON for actions:
 1. INSTANT PAYMENTS: {"action": "payment", "vendor": "name/address", "amount": number, "reason": "description"}
-2. SCHEDULED PAYMENTS: {"action": "schedule", "vendor": "name/address", "amount": number, "frequency": "daily|weekly|monthly|yearly", "startDate": "YYYY-MM-DD", "reason": "description"}
+2. SCHEDULED PAYMENTS: {"action": "schedule", "vendor": "name/address", "amount": number, "frequency": "daily|weekly|monthly|yearly|every_X_days", "intervalDays": number, "startDate": "YYYY-MM-DD", "startTime": "HH:MM", "reason": "description"}
+    - For custom intervals like "every 6 days", use frequency: "custom" and intervalDays: 6
+    - startTime is optional, in 24-hour format like "14:00" for 2pm
+    - Examples: "every 3 days" → frequency: "custom", intervalDays: 3
+               "every 2 weeks" → frequency: "custom", intervalDays: 14
 3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "startTime": "HH:MM", "reason": "description"}
     - Ask user what TIME they want deposits to occur (e.g., "9:00 AM", "6:00 PM")
     - If user says "now" or "immediately", use current time
@@ -210,7 +214,7 @@ const MessageBubble = ({ message, isUser, isSystem }) => {
             <div className="schedule-body">
               <div className="schedule-row"><span>TO:</span><span>{message.schedule.vendor}</span></div>
               <div className="schedule-row"><span>AMOUNT:</span><span>{message.schedule.amount} MNEE</span></div>
-              <div className="schedule-row"><span>FREQUENCY:</span><span>{message.schedule.frequency.toUpperCase()}</span></div>
+              <div className="schedule-row"><span>FREQUENCY:</span><span>{(message.schedule.frequency || 'MONTHLY').toUpperCase()}</span></div>
               <div className="schedule-row"><span>NEXT:</span><span>{message.schedule.nextDate}</span></div>
             </div>
           </div>
@@ -293,7 +297,7 @@ const SchedulePanel = ({ schedules, savingsPlans, onCancel, onExecuteNow, onWith
                 <div className="item-details">
                   <div className="item-title">{schedule.amount} MNEE → {schedule.vendor}</div>
                   <div className="item-meta">
-                    <span><Clock size={10} /> {schedule.frequency}</span>
+                    <span><Clock size={10} /> {schedule.displayFrequency || schedule.frequency}</span>
                     <span><Calendar size={10} /> Next: {schedule.nextDate}</span>
                   </div>
                   {schedule.useAgentWallet && (
@@ -423,14 +427,27 @@ export default function AIAgentChat({
   };
 
   const availableProviders = Object.entries(AI_PROVIDERS).filter(([key]) => getApiKey(key));
-const calculateNextDate = (frequency, startDate = new Date(), executionTime = null) => {
+const calculateNextDate = (frequency, startDate = new Date(), executionTime = null, intervalDays = null) => {
     const next = new Date(startDate);
-    switch (frequency) {
-      case 'daily': next.setDate(next.getDate() + 1); break;
-      case 'weekly': next.setDate(next.getDate() + 7); break;
-      case 'monthly': next.setMonth(next.getMonth() + 1); break;
-      case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
-      default: next.setMonth(next.getMonth() + 1);
+    
+    // Handle custom interval
+    if (frequency === 'custom' && intervalDays) {
+      next.setDate(next.getDate() + parseInt(intervalDays));
+    } else {
+      switch (frequency) {
+        case 'daily': next.setDate(next.getDate() + 1); break;
+        case 'weekly': next.setDate(next.getDate() + 7); break;
+        case 'monthly': next.setMonth(next.getMonth() + 1); break;
+        case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
+        default: 
+          // Check if frequency contains interval info like "every_6_days"
+          const match = frequency?.match(/every_(\d+)_days/);
+          if (match) {
+            next.setDate(next.getDate() + parseInt(match[1]));
+          } else {
+            next.setMonth(next.getMonth() + 1);
+          }
+      }
     }
     
     if (executionTime) {
@@ -474,16 +491,6 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       
       try {
         const backendLoaded = await loadFromBackend();
-        const pendingKey = `sentinel_pending_sync_${account}`;
-        const pendingSyncs = JSON.parse(localStorage.getItem(pendingKey) || '[]');
-        if (pendingSyncs.length > 0) {
-          console.log(`📤 Found ${pendingSyncs.length} pending syncs, retrying...`);
-          const syncSuccess = await syncToBackend(true, true);
-          if (syncSuccess) {
-            localStorage.removeItem(pendingKey);
-            console.log('✅ Pending syncs completed');
-          }
-        }
         
         if (!backendLoaded) {
           const savedSchedules = localStorage.getItem(`sentinel_schedules_${account}`);
@@ -492,6 +499,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
         }
         
+        // Blockchain sync first
         if (provider && agentManager?.networkConfig?.savingsContract && agentManager?.getAddress()) {
           try {
             const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
@@ -508,6 +516,20 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           } catch (e) {
             console.warn('Blockchain sync on load failed:', e);
           }
+        }
+        
+        // Retry pending syncs AFTER blockchain sync with delay
+        const pendingKey = `sentinel_pending_sync_${account}`;
+        const pendingSyncs = JSON.parse(localStorage.getItem(pendingKey) || '[]');
+        if (pendingSyncs.length > 0) {
+          console.log(`📤 Found ${pendingSyncs.length} pending syncs, retrying in 5s...`);
+          setTimeout(async () => {
+            const syncSuccess = await syncToBackend(true, true);
+            if (syncSuccess) {
+              localStorage.removeItem(pendingKey);
+              console.log('✅ Pending syncs completed');
+            }
+          }, 5000);
         }
         
       } finally {
@@ -537,60 +559,74 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
   }, [account]);
 
   useEffect(() => {
+    // Ref to track if execution is in progress
+    let isExecuting = false;
+    
     const checkAndExecuteDuePayments = async () => {
       if (!agentManager || !agentManager.hasWallet() || !provider) return;
+      if (isExecuting) return; // Prevent concurrent execution
       
-      const now = new Date();
-      const balance = await loadAgentBalance();
+      isExecuting = true;
       
-      for (const schedule of schedules) {
-        if (schedule.paused) continue;
-        const nextDate = new Date(schedule.nextDate);
+      try {
+        const now = new Date();
+        const balance = await loadAgentBalance();
         
-        if (nextDate <= now) {
-          if (balance >= schedule.amount) {
+        for (const schedule of schedules) {
+          if (schedule.paused || schedule.executing) continue;
+          const nextDate = new Date(schedule.nextDate);
           
-            addSystemMessage(` AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
-            try {
-              const result = await agentManager.sendMNEE(provider, schedule.vendorAddress, schedule.amount.toString(), schedule.reason);
-              if (result.success) {
-                addSystemMessage(`✅ SENT: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
-                // LOG THE TRANSACTION
-                await logAgentTransaction({
-                  user_address: account,
-                  agent_address: agentManager.getAddress(),
-                  tx_type: 'schedule',
-                  amount: schedule.amount,
-                  destination: schedule.vendorAddress,
-                  destination_name: schedule.vendor,
-                  tx_hash: result.txHash,
-                  status: 'success',
-                  schedule_id: schedule.id
-                });
-               
-                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false } : s));
-                await loadAgentBalance();
-                onAgentWalletUpdate && onAgentWalletUpdate();
-              } else {
-                addSystemMessage(`❌ FAILED: ${result.error}`, 'danger');
-                await logAgentTransaction({
-                  user_address: account,
-                  agent_address: agentManager.getAddress(),
-                  tx_type: 'schedule',
-                  amount: schedule.amount,
-                  destination: schedule.vendorAddress,
-                  destination_name: schedule.vendor,
-                  status: 'failed',
-                  schedule_id: schedule.id,
-                  error_message: result.error
-                });
+          if (nextDate <= now) {
+            if (balance >= schedule.amount) {
+            
+              // Mark as executing to prevent duplicates
+              setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: true } : s));
+              
+              addSystemMessage(` AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
+              try {
+                const result = await agentManager.sendMNEE(provider, schedule.vendorAddress, schedule.amount.toString(), schedule.reason);
+                if (result.success) {
+                  addSystemMessage(`✅ SENT: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
+                  // LOG THE TRANSACTION
+                  await logAgentTransaction({
+                    user_address: account,
+                    agent_address: agentManager.getAddress(),
+                    tx_type: 'schedule',
+                    amount: schedule.amount,
+                    destination: schedule.vendorAddress,
+                    destination_name: schedule.vendor,
+                    tx_hash: result.txHash,
+                    status: 'success',
+                    schedule_id: schedule.id
+                  });
+                 
+                  setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, nextDate: calculateNextDate(s.frequency, new Date(), s.startTime, s.intervalDays), notified: false, executing: false } : s));
+                  await loadAgentBalance();
+                  onAgentWalletUpdate && onAgentWalletUpdate();
+                } else {
+                  addSystemMessage(`❌ FAILED: ${result.error}`, 'danger');
+                  await logAgentTransaction({
+                    user_address: account,
+                    agent_address: agentManager.getAddress(),
+                    tx_type: 'schedule',
+                    amount: schedule.amount,
+                    destination: schedule.vendorAddress,
+                    destination_name: schedule.vendor,
+                    status: 'failed',
+                    schedule_id: schedule.id,
+                    error_message: result.error
+                  });
+                  // Clear executing flag on failure
+                  setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: false } : s));
+                }
+              } catch (err) {
+                addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
+                // Clear executing flag on error
+                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: false } : s));
               }
-            } catch (err) {
-              addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
-            }
-          } else {
-            if (!schedule.lowBalanceNotified) {
-              const shortfall = schedule.amount - balance;
+            } else {
+              if (!schedule.lowBalanceNotified) {
+                const shortfall = schedule.amount - balance;
               addSystemMessage(`⚠️ LOW BALANCE: Can't pay ${schedule.vendor}. Need ${shortfall.toFixed(2)} more MNEE. Say "top up agent with ${Math.ceil(shortfall * 1.2)} MNEE"`, 'low-balance');
               setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, lowBalanceNotified: true } : s));
             }
@@ -668,6 +704,9 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
             setSavingsPlans(prev => prev.map(p => p.id === plan.id ? { ...p, lowBalanceNotified: true } : p));
           }
         }
+      }
+      } finally {
+        isExecuting = false;
       }
     };
 
@@ -804,14 +843,41 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     }
 
     const startDate = intent.startDate || new Date().toISOString().split('T')[0];
+    const startTime = intent.startTime || null;
+    
+    // Handle custom intervals
+    let frequency = intent.frequency || 'monthly';
+    let intervalDays = intent.intervalDays || null;
+    let displayFrequency = frequency;
+    
+    // Parse intervalDays if frequency is custom
+    if (frequency === 'custom' && intervalDays) {
+      displayFrequency = `every ${intervalDays} days`;
+    } else if (frequency.match(/every_(\d+)_days/)) {
+      const match = frequency.match(/every_(\d+)_days/);
+      intervalDays = parseInt(match[1]);
+      displayFrequency = `every ${intervalDays} days`;
+      frequency = 'custom';
+    }
+    
+    // Calculate start datetime with time if provided
+    let startDateTime = new Date(startDate);
+    if (startTime) {
+      const [hours, minutes] = startTime.split(':').map(Number);
+      startDateTime.setHours(hours, minutes, 0, 0);
+    }
+    
     const newSchedule = {
       id: `sched_${Date.now()}`,
       vendor: vendor.name || intent.vendor,
       vendorAddress: vendor.address,
       amount: amount,
-      frequency: intent.frequency || 'monthly',
+      frequency: frequency,
+      intervalDays: intervalDays,
+      displayFrequency: displayFrequency,
       startDate: startDate,
-      nextDate: calculateNextDate(intent.frequency || 'monthly', new Date(startDate)),
+      startTime: startTime,
+      nextDate: calculateNextDate(frequency, startDateTime, startTime, intervalDays),
       reason: intent.reason || 'Scheduled payment',
       isTrusted: vendor.isTrusted,
       useAgentWallet: true,
@@ -822,8 +888,8 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
 
     setSchedules(prev => [...prev, newSchedule]);
     syncToBackend(true, false);
-    addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${newSchedule.frequency}) via Agent Wallet`, 'schedule');
-    return { vendor: newSchedule.vendor, amount: newSchedule.amount, frequency: newSchedule.frequency, nextDate: newSchedule.nextDate };
+    addSystemMessage(`✅ SCHEDULED: ${newSchedule.amount} MNEE to ${newSchedule.vendor} (${displayFrequency}${startTime ? ` at ${startTime}` : ''}) via Agent Wallet`, 'schedule');
+    return { vendor: newSchedule.vendor, amount: newSchedule.amount, frequency: displayFrequency, nextDate: newSchedule.nextDate };
   };
 
   const createSavingsPlan = async (intent) => {
@@ -848,9 +914,24 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     unlockDate.setDate(unlockDate.getDate() + lockDays);
 
     let contractPlanId = null;
-    let depositSucceeded = false;  
+    let depositSucceeded = false;
+    let creationFailed = false;
+    let needsGas = false;
     
     if (agentManager && agentManager.createSavingsPlan) {
+      // Check ETH balance first
+      try {
+        const ethBal = await agentManager.getEthBalance(provider);
+        if (parseFloat(ethBal) < 0.0001) {
+          needsGas = true;
+          addSystemMessage(`❌ Agent wallet needs ETH for gas to create savings plan.`, 'danger');
+          addSystemMessage(`💡 Say "fund agent with 0.01 eth" to add gas, then try again.`, 'info');
+          return null;
+        }
+      } catch (e) {
+        console.warn('ETH balance check failed:', e);
+      }
+      
       addSystemMessage(`⏳ Creating savings plan on blockchain...`, 'info');
       try {
         const result = await agentManager.createSavingsPlan(provider, intent.name || `${frequency} Savings`, lockDays, amount.toString(), true);
@@ -878,11 +959,35 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
             }
           }, 2000); 
         } else {
-          addSystemMessage(`⚠️ On-chain creation failed: ${result.error}. Saving locally.`, 'warning');
+          creationFailed = true;
+          // Check if it's a gas issue
+          const errorLower = (result.error || '').toLowerCase();
+          if (errorLower.includes('gas') || errorLower.includes('eth') || errorLower.includes('insufficient funds')) {
+            addSystemMessage(`❌ On-chain creation failed: No ETH for gas.`, 'danger');
+            addSystemMessage(`💡 Say "fund agent with 0.01 eth" to add gas, then try creating the savings plan again.`, 'info');
+            return null;
+          } else {
+            addSystemMessage(`❌ On-chain creation failed: ${result.error}`, 'danger');
+            addSystemMessage(`💡 Please try again or check your agent wallet setup.`, 'info');
+            return null;
+          }
         }
       } catch (err) {
-        addSystemMessage(`⚠️ Contract error: ${err.message}. Saving locally.`, 'warning');
+        creationFailed = true;
+        const errorLower = (err.message || '').toLowerCase();
+        if (errorLower.includes('gas') || errorLower.includes('eth') || errorLower.includes('insufficient funds')) {
+          addSystemMessage(`❌ Contract error: No ETH for gas.`, 'danger');
+          addSystemMessage(`💡 Say "fund agent with 0.01 eth" to add gas, then try creating the savings plan again.`, 'info');
+          return null;
+        } else {
+          addSystemMessage(`❌ Contract error: ${err.message}`, 'danger');
+          addSystemMessage(`💡 Please try again or check your agent wallet setup.`, 'info');
+          return null;
+        }
       }
+    } else {
+      addSystemMessage(`❌ Agent wallet not available. Please set up agent wallet first.`, 'danger');
+      return null;
     }
 
   const now = new Date();
@@ -956,7 +1061,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       });
             setSchedules(prev => prev.map(s => 
               s.id === schedule.id 
-                ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false }
+                ? { ...s, nextDate: calculateNextDate(s.frequency, new Date(), s.startTime, s.intervalDays), notified: false }
                 : s
             ));
             await loadAgentBalance();
@@ -992,7 +1097,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     if (result && result.status !== 'blocked') {
       setSchedules(prev => prev.map(s => 
         s.id === schedule.id 
-          ? { ...s, nextDate: calculateNextDate(s.frequency), notified: false }
+          ? { ...s, nextDate: calculateNextDate(s.frequency, new Date(), s.startTime, s.intervalDays), notified: false }
           : s
       ));
     }
@@ -1534,7 +1639,7 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCoun
     if (!account) return false;
     
     const MAX_RETRIES = 3;
-    const RETRY_DELAY = 1000; // 1 second
+    const RETRY_DELAY = 2000; // 2 seconds
     
     try {
       const data = {
@@ -1554,10 +1659,11 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCoun
           vendor: s.vendor || s.name,
           vendor_address: s.vendorAddress || s.recipient,
           amount: parseFloat(s.amount),
-          frequency: s.frequency,
-          execution_time: s.executionTime || '09:00',
+          frequency: s.frequency === 'custom' ? `every_${s.intervalDays || 7}_days` : s.frequency,
+          interval_days: s.intervalDays || null,
+          execution_time: s.startTime || s.executionTime || '09:00',
           start_date: s.createdAt || new Date().toISOString(),
-          next_execution: s.nextRun,
+          next_execution: s.nextDate || s.nextRun,
           reason: s.reason || '',
           is_trusted: s.isTrusted || false,
           is_active: !s.paused
@@ -1709,8 +1815,11 @@ const loadFromBackend = async () => {
         console.log('✅ Loaded from backend:', backendSchedules.length, 'schedules,', backendPlans.length, 'plans');
         if (localOnlySchedules.length || localOnlyPlans.length) {
           console.log('📦 Kept local-only:', localOnlySchedules.length, 'schedules,', localOnlyPlans.length, 'plans');
-          console.log('🔄 Syncing local-only items to backend...');
-          syncToBackend(localOnlySchedules.length > 0, localOnlyPlans.length > 0);
+          console.log('🔄 Syncing local-only items to backend in 3s...');
+          // Delay sync to allow blockchain data to load first
+          setTimeout(() => {
+            syncToBackend(localOnlySchedules.length > 0, localOnlyPlans.length > 0);
+          }, 3000);
         }
         return true;
       }

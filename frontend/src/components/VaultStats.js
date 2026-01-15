@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
 
+const API_KEY = process.env.REACT_APP_API_KEY || '';
+
 const formatTimeLock = (seconds) => {
   if (!seconds || seconds === 0) return '0 SEC';
   if (seconds < 60) return `${seconds} SEC`;
@@ -934,7 +936,10 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
       try {
         await fetch(`${apiUrl}/api/v1/vendors`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-API-Key': API_KEY
+          },
           body: JSON.stringify({
             address: newVendorAddress,
             name: newVendorName.trim(),

@@ -316,15 +316,19 @@ class RecurringScheduleCreate(BaseModel):
     vendor_address: str
     amount: float
     frequency: str
+    interval_days: Optional[int] = None  # For custom frequencies like "every 6 days"
+    payment_type: Optional[str] = "vendor"
     execution_time: str = "09:00"
     start_date: Optional[str] = None
-    next_execution: str
+    next_execution: Optional[str] = None
     reason: Optional[str] = ""
     is_trusted: bool = False
+    is_active: bool = True
 
 class RecurringScheduleUpdate(BaseModel):
     amount: Optional[float] = None
     frequency: Optional[str] = None
+    interval_days: Optional[int] = None
     execution_time: Optional[str] = None
     next_execution: Optional[str] = None
     is_active: Optional[bool] = None
@@ -1157,26 +1161,57 @@ async def sync_recurring_data(
     auth: bool = Depends(verify_api_key)
 ):
     """Sync all recurring schedules and savings plans from frontend"""
+    # Known fields for schedules
+    SCHEDULE_FIELDS = {
+        'id', 'user_address', 'vault_address', 'agent_address', 'vendor', 
+        'vendor_address', 'amount', 'frequency', 'interval_days', 'payment_type',
+        'execution_time', 'start_date', 'next_execution', 'reason', 
+        'is_trusted', 'is_active'
+    }
+    
+    # Known fields for savings plans  
+    PLAN_FIELDS = {
+        'id', 'user_address', 'vault_address', 'agent_address', 'contract_plan_id',
+        'name', 'amount', 'frequency', 'lock_days', 'execution_time', 'start_date',
+        'next_deposit', 'unlock_date', 'target_amount', 'total_saved', 
+        'is_active', 'withdrawn', 'reason'
+    }
+    
     try:
+        synced_schedules = 0
+        synced_plans = 0
+        
         for schedule in req.schedules:
-            schedule["user_address"] = req.user_address
-            save_recurring_schedule(schedule)
+            # Filter to known fields only
+            filtered = {k: v for k, v in schedule.items() if k in SCHEDULE_FIELDS}
+            filtered["user_address"] = req.user_address
+            try:
+                save_recurring_schedule(filtered)
+                synced_schedules += 1
+            except Exception as e:
+                logger.warning("schedule_sync_failed", id=schedule.get('id'), error=str(e))
         
         for plan in req.savings_plans:
-            plan["user_address"] = req.user_address
-            save_savings_plan(plan)
+            # Filter to known fields only
+            filtered = {k: v for k, v in plan.items() if k in PLAN_FIELDS}
+            filtered["user_address"] = req.user_address
+            try:
+                save_savings_plan(filtered)
+                synced_plans += 1
+            except Exception as e:
+                logger.warning("plan_sync_failed", id=plan.get('id'), error=str(e))
         
         logger.info(
             "recurring_data_synced",
             user=req.user_address,
-            schedules=len(req.schedules),
-            plans=len(req.savings_plans)
+            schedules=synced_schedules,
+            plans=synced_plans
         )
         
         return {
             "success": True,
-            "synced_schedules": len(req.schedules),
-            "synced_plans": len(req.savings_plans)
+            "synced_schedules": synced_schedules,
+            "synced_plans": synced_plans
         }
     except Exception as e:
         logger.error("sync_failed", error=str(e))
