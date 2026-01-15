@@ -330,7 +330,7 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
     setAlerts(propAlerts);
   }, [propAlerts]);
 
-  // Load schedule and savings alerts from localStorage
+ 
   useEffect(() => {
     const loadAutomationAlerts = () => {
       if (!account) return;
@@ -346,7 +346,7 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
         const newScheduleAlerts = [];
         const newSavingsAlerts = [];
 
-        // Check for due scheduled payments
+       
         schedules.forEach(schedule => {
           const nextDate = new Date(schedule.nextDate);
           const daysUntil = Math.ceil((nextDate - now) / (1000 * 60 * 60 * 24));
@@ -370,7 +370,7 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
           }
         });
 
-        // Check for savings deposits due
+        
         savings.forEach(plan => {
           const nextDeposit = new Date(plan.nextDeposit);
           const daysUntilDeposit = Math.ceil((nextDeposit - now) / (1000 * 60 * 60 * 24));
@@ -393,7 +393,7 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
             });
           }
 
-          // Alert when savings plan is about to unlock
+         
           if (daysUntilUnlock <= 7 && daysUntilUnlock > 0) {
             newSavingsAlerts.push({
               id: `unlock_alert_${plan.id}`,
@@ -447,7 +447,7 @@ export default function AlertPanel({ alerts: propAlerts = [], onAcknowledge, onR
   });
 
   const handleAcknowledge = async (id) => {
-    // Check if it's a schedule or savings alert
+   
     if (id.startsWith('sched_alert_') || id.startsWith('save_alert_') || id.startsWith('unlock_alert_')) {
       setScheduleAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
       setSavingsAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));

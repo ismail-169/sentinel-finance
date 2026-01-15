@@ -10,23 +10,23 @@ async function main() {
   const [signer] = await hre.ethers.getSigners();
   console.log("Using account:", signer.address);
 
-  // Check token balance
+  
   const balance = await token.balanceOf(signer.address);
   console.log("Token balance:", hre.ethers.formatUnits(balance, 18), "MNEE");
 
-  // Approve vault
+  
   console.log("Approving vault...");
   const approveTx = await token.approve(vaultAddress, hre.ethers.parseUnits("10000", 18));
   await approveTx.wait();
   console.log("Approved!");
 
-  // Deposit
+  
   console.log("Depositing 1000 MNEE...");
   const depositTx = await vault.deposit(hre.ethers.parseUnits("1000", 18));
   await depositTx.wait();
   console.log("Deposited!");
 
-  // Check vault balance
+ 
   const vaultBalance = await vault.getVaultBalance();
   console.log("Vault balance:", hre.ethers.formatUnits(vaultBalance, 18), "MNEE");
 }

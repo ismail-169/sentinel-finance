@@ -27,7 +27,7 @@ const NETWORKS = {
     chainId: '0xaa36a7',
     chainIdDecimal: 11155111,
     name: 'Sepolia',
-    rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/demo',
+    rpcUrl: 'https://sepolia.drpc.org',
     explorer: 'https://sepolia.etherscan.io',
     mneeToken: '0x250ff89cf1518F42F3A4c927938ED73444491715',
     vaultFactory: '0xfD3af9554C45211c228B8E7498B26A325669A484',
@@ -38,7 +38,7 @@ const NETWORKS = {
     chainId: '0x1',
     chainIdDecimal: 1,
     name: 'Mainnet',
-    rpcUrl: 'https://eth-mainnet.g.alchemy.com/v2/your-key',
+    rpcUrl: 'https://eth.llamarpc.com',
     explorer: 'https://etherscan.io',
     mneeToken: '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF',
     vaultFactory: '0x0000000000000000000000000000000000000000',
@@ -147,12 +147,12 @@ export default function App() {
   };
 
   const connectWallet = async (network) => {
-    // Check if on mobile
+    
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     if (!window.ethereum) {
       if (isMobile) {
-        // Deep link to MetaMask app
+       
         const dappUrl = window.location.href.replace('https://', '').replace('http://', '');
         const metamaskDeepLink = `https://metamask.app.link/dapp/${dappUrl}`;
         window.location.href = metamaskDeepLink;
@@ -288,7 +288,7 @@ export default function App() {
     setAlerts([]);
     setVendors([]);
     setSelectedNetwork(null);
-    setForceNewWallet(true); // Force wallet picker on next connect
+    setForceNewWallet(true); 
     setAppState('network-select');
   };
 
@@ -392,7 +392,7 @@ export default function App() {
       totalTransactions: Number(txCount)
     });
 
-    // Load vault transactions from API
+   
     const apiTxData = await apiCall('/api/v1/transactions/history?limit=20');
     const apiTxMap = new Map();
     if (apiTxData?.transactions) {
@@ -404,7 +404,7 @@ export default function App() {
       });
     }
 
-    // Load on-chain vault transactions
+   
     const txs = [];
     const count = Math.min(Number(txCount), 20);
     for (let i = Number(txCount) - 1; i >= Math.max(0, Number(txCount) - count); i--) {
@@ -413,7 +413,7 @@ export default function App() {
       
       txs.push({
         id: i,
-        isAgentTx: false, // Vault transaction
+        isAgentTx: false, 
         txType: 'vault',
         agent: tx.agent,
         vendor: tx.vendor,
@@ -430,7 +430,7 @@ export default function App() {
     }
     setTransactions(txs);
 
-    // Load agent wallet transactions
+    
     if (account) {
       try {
         const agentResponse = await apiCall(`/api/v1/agent/transactions/${account}?limit=20`);
@@ -475,10 +475,10 @@ const loadAgentTransactions = useCallback(async () => {
   try {
     const response = await apiCall(`/api/v1/agent/transactions/${account}?limit=50`);
     if (response?.transactions) {
-      // Format agent transactions for display
+      
       const formattedTxs = response.transactions.map(tx => ({
         id: tx.id,
-        isAgentTx: true, // IMPORTANT: Flag for styling
+        isAgentTx: true, 
         txType: 'agent',
         executionType: tx.execution_type,
         agent: tx.agent,
@@ -491,7 +491,7 @@ const loadAgentTransactions = useCallback(async () => {
         revoked: tx.status === 'failed',
         scheduleId: tx.schedule_id,
         savingsPlanId: tx.savings_plan_id,
-        // Display labels based on execution type
+       
         displayLabel: getAgentTxLabel(tx.execution_type)
       }));
       

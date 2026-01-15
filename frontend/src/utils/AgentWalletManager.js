@@ -33,12 +33,12 @@ class AgentWalletManager {
     this.agentWallet = null;
     this.trustedDestinations = new Set();
     
-    // Always trust the user's own vault
+    
     if (this.vaultAddress) {
       this.trustedDestinations.add(this.vaultAddress);
     }
     
-// Trust the savings contract
+
     if (networkConfig?.savingsContract) {
       this.trustedDestinations.add(networkConfig.savingsContract.toLowerCase());
     }
@@ -54,20 +54,15 @@ class AgentWalletManager {
   async getTransactionOptions(provider, gasLimit = 100000) {
     const txOptions = { gasLimit };
     
-    // Testnets (Sepolia, Goerli) have issues with EIP-1559 estimation
-    // Use legacy gas pricing for them
+   
     if (this.networkConfig?.isTestnet) {
       try {
         const feeData = await provider.getFeeData();
-        // Use gasPrice for legacy transactions
         txOptions.gasPrice = feeData.gasPrice || ethers.parseUnits('10', 'gwei');
       } catch (e) {
-        // Fallback to safe default
         txOptions.gasPrice = ethers.parseUnits('10', 'gwei');
       }
     }
-    // Mainnet: don't set gasPrice, let ethers.js use EIP-1559 automatically
-    // This gives better gas estimation and priority fees
     
     return txOptions;
   }
@@ -83,7 +78,6 @@ class AgentWalletManager {
            msg.includes('nonce too low') ||
            msg.includes('replacement transaction underpriced');
   }
-  // Signing message for deterministic wallet generation
   getSigningMessage() {
     return `Sentinel Finance Agent Wallet Authorization\n\nThis signature creates your Agent Wallet for automated payments.\n\nWallet: ${this.userAddress}\nTimestamp: SENTINEL_AGENT_V1`;
   }
@@ -95,7 +89,6 @@ class AgentWalletManager {
    */
   async initializeWallet(signer) {
     try {
-      // Check for cached wallet first
       const cached = this.loadFromStorage();
       if (cached && cached.address) {
         const verified = await this.verifyCachedWallet(cached, signer);
@@ -105,16 +98,14 @@ class AgentWalletManager {
         }
       }
 
-      // Generate new wallet from signature
       const message = this.getSigningMessage();
       const signature = await signer.signMessage(message);
       
-      // Derive private key deterministically from signature
       const privateKey = ethers.keccak256(signature);
       
       this.agentWallet = new ethers.Wallet(privateKey);
       
-      // Save to storage
+      
       this.saveToStorage(privateKey, this.agentWallet.address);
       
       return { address: this.agentWallet.address, isNew: true };
@@ -125,7 +116,7 @@ class AgentWalletManager {
     }
   }
 
-  // Verify cached wallet belongs to this user
+  
   async verifyCachedWallet(cached, signer) {
     try {
       return cached.userAddress === this.userAddress;
@@ -134,13 +125,13 @@ class AgentWalletManager {
     }
   }
 
-  // Save wallet to localStorage
+  
   saveToStorage(privateKey, address) {
     const data = {
       userAddress: this.userAddress,
       vaultAddress: this.vaultAddress,
       address: address,
-      privateKey: privateKey, // In production: encrypt this properly
+      privateKey: privateKey, 
       createdAt: new Date().toISOString(),
       version: 1
     };
@@ -151,7 +142,7 @@ class AgentWalletManager {
     );
   }
 
-  // Load wallet from localStorage
+ 
   loadFromStorage() {
     try {
       const stored = localStorage.getItem(`${STORAGE_PREFIX}${this.userAddress}`);
@@ -190,18 +181,18 @@ ensureWalletLoaded() {
     return cached?.address || null;
   }
 
-  // Check if wallet exists
+ 
   hasWallet() {
     const cached = this.loadFromStorage();
     return !!cached?.address;
   }
 
-  // Add a trusted vendor
+  
   addTrustedVendor(address) {
     this.trustedDestinations.add(address.toLowerCase());
   }
 
-  // Set multiple trusted vendors
+  
   setTrustedVendors(vendors) {
     vendors.forEach(v => {
       if (v.address && v.trusted) {
@@ -210,16 +201,16 @@ ensureWalletLoaded() {
     });
   }
 
-  // Validate destination address
+  
   isValidDestination(address) {
     const normalized = address.toLowerCase();
     
-    // Always allow sending to own vault
+   
     if (normalized === this.vaultAddress) {
       return { valid: true, reason: 'Own vault' };
     }
     
-    // Check trusted destinations
+   
     if (this.trustedDestinations.has(normalized)) {
       return { valid: true, reason: 'Trusted destination' };
     }
@@ -230,7 +221,7 @@ ensureWalletLoaded() {
     };
   }
 
-  // Get MNEE balance
+  
   async getBalance(provider) {
     const address = this.getAddress();
     if (!address) return '0';
@@ -249,7 +240,6 @@ ensureWalletLoaded() {
     }
   }
 
-  // Get ETH balance (for gas)
   async getEthBalance(provider) {
     const address = this.getAddress();
     if (!address) return '0';
@@ -278,7 +268,7 @@ ensureWalletLoaded() {
       return { success: false, error: validation.reason };
     }
 
-    // Check gas
+   
     const gasCheck = await this.checkGasBalance(provider);
     if (gasCheck.empty) {
       return { success: false, error: 'No ETH for gas. Fund agent with ETH first.', needsGas: true };
@@ -300,7 +290,7 @@ ensureWalletLoaded() {
 
       const amountWei = ethers.parseUnits(amount.toString(), 18);
       
-      // Check balance
+     
       const balance = await mneeContract.balanceOf(this.agentWallet.address);
       if (balance < amountWei) {
         return { 
@@ -309,7 +299,7 @@ ensureWalletLoaded() {
         };
       }
 
-      // Execute transfer
+    
      const txOptions = await this.getTransactionOptions(provider);
       const tx = await mneeContract.transfer(to, amountWei, txOptions);
       const receipt = await tx.wait();
@@ -325,7 +315,7 @@ ensureWalletLoaded() {
     } catch (error) {
       console.error('Send MNEE failed:', error);
       
-      // "already known" means tx is in mempool - may still succeed
+     
       if (this.isAlreadyKnownError(error)) {
         console.log('Transaction already in mempool, treating as pending success');
         return {
@@ -345,7 +335,7 @@ ensureWalletLoaded() {
     }
   }
 
-  // Withdraw all to vault
+ 
   async withdrawToVault(provider) {
     const balance = await this.getBalance(provider);
     if (parseFloat(balance) <= 0) {
@@ -355,7 +345,7 @@ ensureWalletLoaded() {
     return this.sendMNEE(provider, this.vaultAddress, balance, 'Withdraw to Vault');
   }
 
-  // Withdraw specific amount to vault
+  
   async withdrawAmountToVault(provider, amount) {
     return this.sendMNEE(provider, this.vaultAddress, amount, 'Partial withdraw to Vault');
   }
@@ -375,7 +365,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     }
 
 
-    // Check gas
+    
     const gasCheck = await this.checkGasBalance(provider);
     if (gasCheck.empty) {
       return { success: false, error: 'No ETH for gas', needsGas: true };
@@ -389,14 +379,14 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       const connectedWallet = this.agentWallet.connect(provider);
       const amountWei = ethers.parseUnits(amount.toString(), 18);
 
-      // First approve the savings contract
+     
       const mneeContract = new ethers.Contract(
         this.networkConfig.mneeToken,
         MNEE_ABI,
         connectedWallet
       );
 
-      // Check balance
+      
       const balance = await mneeContract.balanceOf(this.agentWallet.address);
       if (balance < amountWei) {
         return { 
@@ -405,13 +395,13 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         };
       }
 
-      // Approve savings contract
+     
     const approveTxOptions = await this.getTransactionOptions(provider);
       const approveTx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei, approveTxOptions);
       await approveTx.wait();
 
 
-      // Create plan with deposit
+     
       const savingsContract = new ethers.Contract(
         this.networkConfig.savingsContract,
         SAVINGS_ABI,
@@ -430,7 +420,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       
       const receipt = await createTx.wait();
       
-      // Extract planId from logs
+      
      let planId = null;
       for (const log of receipt.logs) {
         try {
@@ -440,7 +430,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
             break;
           }
         } catch (e) {
-          // Try to parse as raw topic if ABI parsing fails
+         
           if (log.topics && log.topics.length > 1) {
             try {
               const possiblePlanId = parseInt(log.topics[1], 16);
@@ -453,7 +443,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         }
       }
       
-      // Fallback: get latest plan from user's plans
+     
       if (planId === null) {
         try {
           const userPlans = await savingsContract.getUserPlans(this.userAddress);
@@ -497,7 +487,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       return { success: false, error: 'Agent wallet not set up' };
     }
 
-    // Check gas
+    
     const gasCheck = await this.checkGasBalance(provider);
     if (gasCheck.empty) {
       return { success: false, error: 'No ETH for gas', needsGas: true };
@@ -511,7 +501,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       const connectedWallet = this.agentWallet.connect(provider);
       const amountWei = ethers.parseUnits(amount.toString(), 18);
 
-      // Check balance
+      
       const mneeContract = new ethers.Contract(
         this.networkConfig.mneeToken,
         MNEE_ABI,
@@ -526,12 +516,12 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         };
       }
 
-      // Approve savings contract
+      
      const approveTxOptions = await this.getTransactionOptions(provider);
       const approveTx = await mneeContract.approve(this.networkConfig.savingsContract, amountWei, approveTxOptions);
       await approveTx.wait();
 
-      // Deposit to plan using depositFromAgent
+      
       const savingsContract = new ethers.Contract(
         this.networkConfig.savingsContract,
         SAVINGS_ABI,
@@ -581,7 +571,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         provider
       );
 
-      // Get plan IDs for the user (main wallet, not agent)
+     
       const planIds = await savingsContract.getUserPlans(this.userAddress);
       
       const plans = [];
@@ -611,10 +601,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     }
   }
 
-  /**
-   * Withdraw from savings plan after lock period ends
-   * Funds go to the vault address set when plan was created
-   */
+  
   async withdrawFromSavings(provider, planId) {
     if (!this.ensureWalletLoaded()) {
       return { success: false, error: 'Agent wallet not set up' };
@@ -633,7 +620,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         connectedWallet
       );
 
-      // Check if plan is unlocked
+    
       const isUnlocked = await savingsContract.isUnlocked(planId);
       if (!isUnlocked) {
         const timeLeft = await savingsContract.timeUntilUnlock(planId);
@@ -645,13 +632,13 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         };
       }
 
-      // Check gas
+     
       const gasCheck = await this.checkGasBalance(provider);
       if (gasCheck.empty) {
         return { success: false, error: 'No ETH for gas', needsGas: true };
       }
 
-      // Execute withdrawal - funds go to vault automatically
+  
     const txOptions = await this.getTransactionOptions(provider, 150000);
       const tx = await savingsContract.withdraw(planId, txOptions);
       const receipt = await tx.wait();
@@ -671,9 +658,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     }
   }
 
-  /**
-   * Cancel a savings plan
-   */
+ 
   async cancelSavingsPlan(provider, planId) {
     if (!this.ensureWalletLoaded()) {
       return { success: false, error: 'Agent wallet not set up' };
@@ -692,7 +677,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         connectedWallet
       );
 
-      // Check gas
+     
       const gasCheck = await this.checkGasBalance(provider);
       if (gasCheck.empty) {
         return { success: false, error: 'No ETH for gas', needsGas: true };
@@ -742,7 +727,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     }
   }
 
-  // Approve savings contract for recurring deposits
+ 
   async approveSavingsContract(provider, amount) {
    if (!this.ensureWalletLoaded()) {
       return { success: false, error: 'Agent wallet not set up' };
@@ -772,7 +757,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     }
   }
 
-  // Get transaction history (from API)
+  
   async getTransactionHistory(apiUrl) {
     const address = this.getAddress();
     if (!address) return [];
@@ -788,13 +773,13 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     return [];
   }
 
-  // Clear wallet from storage
+  
   clearWallet() {
     localStorage.removeItem(`${STORAGE_PREFIX}${this.userAddress}`);
     this.agentWallet = null;
   }
 
-  // Get wallet info
+  
   getWalletInfo() {
     const cached = this.loadFromStorage();
     if (!cached) return null;
@@ -808,12 +793,12 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     };
   }
 
-  // Check if agent needs gas
+  
   async needsGas(provider, minEth = 0.001) {
     const ethBalance = await this.getEthBalance(provider);
     return parseFloat(ethBalance) < minEth;
   }
-// Check gas balance with detailed status
+
   async checkGasBalance(provider, minEth = 0.001) {
     const ethBalance = await this.getEthBalance(provider);
     const balance = parseFloat(ethBalance);
@@ -825,7 +810,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
     };
   }
 
-  // Fund agent wallet with ETH from MetaMask (requires popup)
+  
   async fundWithEth(signer, amount) {
     if (!this.hasWallet()) {
       return { success: false, error: 'Agent wallet not initialized' };
@@ -848,7 +833,7 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       return { success: false, error: err.message };
     }
   }
-  // Sign a message with agent wallet
+  
   async signMessage(message) {
    if (!this.ensureWalletLoaded()) {
       throw new Error('Agent wallet not set up');

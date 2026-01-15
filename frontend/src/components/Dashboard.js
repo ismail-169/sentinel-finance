@@ -130,7 +130,7 @@ const RiskMeter = ({ score }) => {
   );
 };
 
-// Automation Summary Card - Shows schedules & savings
+
 const AutomationSummary = ({ schedules, savingsPlans }) => {
   const nextSchedule = schedules.length > 0 
     ? schedules.reduce((nearest, s) => new Date(s.nextDate) < new Date(nearest.nextDate) ? s : nearest)
@@ -332,7 +332,7 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
   const [schedules, setSchedules] = useState([]);
   const [savingsPlans, setSavingsPlans] = useState([]);
 
-  // Load schedules and savings from localStorage
+ 
  useEffect(() => {
     const loadAutomations = () => {
       if (account) {
@@ -349,20 +349,20 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
 
     loadAutomations();
     
-    // Listen for real-time savings updates from AI chat
+   
     const handleSavingsUpdate = (event) => {
       console.log('📊 Dashboard: Received savings update');
       if (event.detail?.plans) {
         setSavingsPlans(event.detail.plans);
       } else {
-        // Fallback: reload from localStorage
+       
         loadAutomations();
       }
     };
     
     window.addEventListener('savingsUpdated', handleSavingsUpdate);
     
-    // Poll for updates every 10 seconds as backup
+   
     const interval = setInterval(loadAutomations, 10000);
     
     return () => {
@@ -375,7 +375,7 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
   const dailyLimit = vaultData?.dailyLimit || '0';
   const txCount = vaultData?.totalTransactions || transactions.length || 0;
   
-  // Format time lock properly
+  
   const formatTimeLock = (seconds) => {
     if (!seconds || seconds === 0) return '0 SEC';
     if (seconds < 60) return `${seconds} SEC`;

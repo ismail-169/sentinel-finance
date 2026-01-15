@@ -144,7 +144,7 @@ const VendorCard = ({ vendor, onRemove, isTrusted }) => {
   );
 };
 
-// Savings Plans Card Component
+
 const SavingsPlansCard = ({ savingsPlans }) => {
   if (savingsPlans.length === 0) return null;
 
@@ -275,7 +275,7 @@ const SavingsPlansCard = ({ savingsPlans }) => {
   );
 };
 
-// NEW: Schedule Item Component for RECURRING tab
+
 const ScheduleItem = ({ schedule, onCancel, onEdit, onTogglePause }) => {
   const [editing, setEditing] = useState(false);
   const [editAmount, setEditAmount] = useState(schedule.amount);
@@ -459,7 +459,7 @@ const ScheduleItem = ({ schedule, onCancel, onEdit, onTogglePause }) => {
   );
 };
 
-// NEW: Savings Plan Item for RECURRING tab
+
 const SavingsPlanItem = ({ plan, onCancel }) => {
   const progress = (plan.targetAmount || 0) > 0 ? Math.min(100, ((plan.totalSaved || 0) / plan.targetAmount) * 100) : 0;
   const daysLeft = formatDaysLeft(plan.unlockDate);
@@ -864,7 +864,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
     }
   };
 
-  // NEW: Create new recurring schedule from modal
+  
   const handleCreateSchedule = async () => {
     if (!newScheduleForm.vendor || !newScheduleForm.vendorAddress || !newScheduleForm.amount) {
       return;

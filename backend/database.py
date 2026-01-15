@@ -1043,7 +1043,7 @@ def get_stats() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM vendors WHERE trusted = 1")
         trusted_vendors = cursor.fetchone()[0]
         
-        # New stats for recurring payments
+       
         cursor.execute("SELECT COUNT(*) FROM recurring_schedules WHERE is_active = 1")
         active_schedules = cursor.fetchone()[0]
         

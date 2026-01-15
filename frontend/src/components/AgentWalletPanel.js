@@ -31,7 +31,7 @@ export default function AgentWalletPanel({
   const [success, setSuccess] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Load agent wallet data
+  
   useEffect(() => {
     if (agentManager && provider) {
       loadAgentData();
@@ -86,14 +86,14 @@ export default function AgentWalletPanel({
     setError('');
 
     try {
-      // Withdraw from vault to agent wallet
+     
       const amountWei = ethers.parseUnits(fundAmount, 18);
       
-      // First withdraw to user wallet
+      
       const withdrawTx = await vaultContract.withdraw(amountWei);
       await withdrawTx.wait();
 
-      // Then transfer to agent wallet
+     
       const mneeContract = new ethers.Contract(
         networkConfig.mneeToken,
         ["function transfer(address to, uint256 amount) returns (bool)"],

@@ -430,7 +430,7 @@ export default function AIAgentChat({
 const calculateNextDate = (frequency, startDate = new Date(), executionTime = null, intervalDays = null) => {
     const next = new Date(startDate);
     
-    // Handle custom interval
+   
     if (frequency === 'custom' && intervalDays) {
       next.setDate(next.getDate() + parseInt(intervalDays));
     } else {
@@ -440,7 +440,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
         case 'monthly': next.setMonth(next.getMonth() + 1); break;
         case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
         default: 
-          // Check if frequency contains interval info like "every_6_days"
+         
           const match = frequency?.match(/every_(\d+)_days/);
           if (match) {
             next.setDate(next.getDate() + parseInt(match[1]));
@@ -499,7 +499,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           if (savedSavings) setSavingsPlans(JSON.parse(savedSavings));
         }
         
-        // Blockchain sync first
+        
         if (provider && agentManager?.networkConfig?.savingsContract && agentManager?.getAddress()) {
           try {
             const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
@@ -518,7 +518,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           }
         }
         
-        // Retry pending syncs AFTER blockchain sync with delay
+       
         const pendingKey = `sentinel_pending_sync_${account}`;
         const pendingSyncs = JSON.parse(localStorage.getItem(pendingKey) || '[]');
         if (pendingSyncs.length > 0) {
@@ -559,12 +559,12 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
   }, [account]);
 
   useEffect(() => {
-    // Ref to track if execution is in progress
+   
     let isExecuting = false;
     
     const checkAndExecuteDuePayments = async () => {
       if (!agentManager || !agentManager.hasWallet() || !provider) return;
-      if (isExecuting) return; // Prevent concurrent execution
+      if (isExecuting) return; 
       
       isExecuting = true;
       
@@ -579,7 +579,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           if (nextDate <= now) {
             if (balance >= schedule.amount) {
             
-              // Mark as executing to prevent duplicates
+             
               setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: true } : s));
               
               addSystemMessage(` AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
@@ -587,7 +587,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
                 const result = await agentManager.sendMNEE(provider, schedule.vendorAddress, schedule.amount.toString(), schedule.reason);
                 if (result.success) {
                   addSystemMessage(`✅ SENT: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
-                  // LOG THE TRANSACTION
+                 
                   await logAgentTransaction({
                     user_address: account,
                     agent_address: agentManager.getAddress(),
@@ -616,12 +616,12 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
                     schedule_id: schedule.id,
                     error_message: result.error
                   });
-                  // Clear executing flag on failure
+                 
                   setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: false } : s));
                 }
               } catch (err) {
                 addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
-                // Clear executing flag on error
+               
                 setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: false } : s));
               }
             } else {
@@ -647,7 +647,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
                 if (result.success) {
                   addSystemMessage(`✅ DEPOSITED: ${plan.amount} MNEE to savings`, 'success');
                   
-                  // LOG THE SAVINGS DEPOSIT
+                 
                   await logAgentTransaction({
                     user_address: account,
                     agent_address: agentManager.getAddress(),
@@ -675,7 +675,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
                 }
               } catch (err) {
                 addSystemMessage(`❌ Deposit failed: ${err.message}`, 'danger');
-                // LOG FAILED DEPOSIT
+              
                 await logAgentTransaction({
                   user_address: account,
                   agent_address: agentManager.getAddress(),
@@ -845,12 +845,12 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     const startDate = intent.startDate || new Date().toISOString().split('T')[0];
     const startTime = intent.startTime || null;
     
-    // Handle custom intervals
+  
     let frequency = intent.frequency || 'monthly';
     let intervalDays = intent.intervalDays || null;
     let displayFrequency = frequency;
     
-    // Parse intervalDays if frequency is custom
+   
     if (frequency === 'custom' && intervalDays) {
       displayFrequency = `every ${intervalDays} days`;
     } else if (frequency.match(/every_(\d+)_days/)) {
@@ -860,7 +860,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       frequency = 'custom';
     }
     
-    // Calculate start datetime with time if provided
+    
     let startDateTime = new Date(startDate);
     if (startTime) {
       const [hours, minutes] = startTime.split(':').map(Number);
@@ -919,7 +919,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     let needsGas = false;
     
     if (agentManager && agentManager.createSavingsPlan) {
-      // Check ETH balance first
+     
       try {
         const ethBal = await agentManager.getEthBalance(provider);
         if (parseFloat(ethBal) < 0.0001) {
@@ -960,7 +960,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           }, 2000); 
         } else {
           creationFailed = true;
-          // Check if it's a gas issue
+         
           const errorLower = (result.error || '').toLowerCase();
           if (errorLower.includes('gas') || errorLower.includes('eth') || errorLower.includes('insufficient funds')) {
             addSystemMessage(`❌ On-chain creation failed: No ETH for gas.`, 'danger');
@@ -1047,7 +1047,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
           );
           if (result.success) {
             addSystemMessage(`✅ PAID: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
-            // Log the transaction to backend
+           
       await logAgentTransaction({
         user_address: account,
         agent_address: agentManager.getAddress(),
@@ -1086,7 +1086,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       }
     };
 
-    addSystemMessage(`⚡ EXECUTING SCHEDULED PAYMENT VIA VAULT...`, 'info');
+    addSystemMessage(` EXECUTING SCHEDULED PAYMENT VIA VAULT...`, 'info');
     
     const result = await executePayment({
       vendor: schedule.vendor,
@@ -1263,7 +1263,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     if (receipt.status === 1) {
       addSystemMessage(`✅ Funded agent wallet with ${amount} MNEE from vault!`, 'success');
       
-      // LOG THE FUNDING TRANSACTION
+      
       await logAgentTransaction({
         user_address: account,
         agent_address: agentManager.getAddress(),
@@ -1287,7 +1287,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     } else {
       addSystemMessage(`❌ Transfer transaction failed.`, 'danger');
       
-      // LOG FAILED FUNDING
+      
       await logAgentTransaction({
         user_address: account,
         agent_address: agentManager.getAddress(),
@@ -1305,7 +1305,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
   } catch (err) {
     console.error('Fund agent error:', err);
     
-    // LOG FAILED FUNDING
+    
     await logAgentTransaction({
       user_address: account,
       agent_address: agentManager?.getAddress(),
@@ -1404,7 +1404,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       if (result.success) {
         addSystemMessage(`✅ Withdrawn ${result.amount} MNEE to vault`, 'success');
         
-        // LOG THE WITHDRAWAL TRANSACTION
+       
         await logAgentTransaction({
           user_address: account,
           agent_address: agentManager.getAddress(),
@@ -1428,7 +1428,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     } catch (err) {
       addSystemMessage(`❌ Withdrawal failed: ${err.message}`, 'danger');
       
-      // LOG FAILED WITHDRAWAL
+     
       await logAgentTransaction({
         user_address: account,
         agent_address: agentManager.getAddress(),
@@ -1456,7 +1456,7 @@ const withdrawFromSavingsPlan = async (plan) => {
     setWithdrawingPlanId(plan.id);
 
     try {
-      // Check ETH balance first
+      
       const ethBal = await agentManager.getEthBalance(provider);
       if (parseFloat(ethBal) < 0.0001) {
         addSystemMessage(`⚠️ Agent wallet needs ETH for gas to withdraw.`, 'warning');
@@ -1472,7 +1472,7 @@ const withdrawFromSavingsPlan = async (plan) => {
       if (result.success) {
         addSystemMessage(`✅ Withdrawn ${plan.totalSaved || plan.amount} MNEE to vault!`, 'success');
         
-        // LOG THE SAVINGS WITHDRAWAL
+       
         await logAgentTransaction({
           user_address: account,
           agent_address: agentManager.getAddress(),
@@ -1485,15 +1485,15 @@ const withdrawFromSavingsPlan = async (plan) => {
           savings_plan_id: plan.id
         });
         
-        // Update plan as withdrawn
+       
         setSavingsPlans(prev => prev.map(p => 
           p.id === plan.id ? { ...p, withdrawn: true } : p
         ));
         
-        // Sync to backend
+       
         syncToBackend(false, true);
         
-        // Refresh balances
+        
         onAgentWalletUpdate && onAgentWalletUpdate();
         onTransactionCreated && onTransactionCreated();
       } else {
@@ -1510,7 +1510,7 @@ const withdrawFromSavingsPlan = async (plan) => {
           addSystemMessage(`❌ ${result.error}`, 'danger');
         }
         
-        // LOG FAILED SAVINGS WITHDRAWAL
+       
         await logAgentTransaction({
           user_address: account,
           agent_address: agentManager.getAddress(),
@@ -1527,7 +1527,7 @@ const withdrawFromSavingsPlan = async (plan) => {
       console.error('Withdraw savings error:', err);
       addSystemMessage(`❌ Withdrawal failed: ${err.message}`, 'danger');
       
-      // LOG ERROR
+     
       await logAgentTransaction({
         user_address: account,
         agent_address: agentManager.getAddress(),
@@ -1604,11 +1604,11 @@ const withdrawFromSavingsPlan = async (plan) => {
               console.warn('Post-cancel sync failed:', e);
             }
             
-            // Refresh vault/wallet balances
+          
             onAgentWalletUpdate && onAgentWalletUpdate();
           } else {
             addSystemMessage(`❌ Cancel failed: ${result.error}`, 'danger');
-            return; // Don't remove from local if contract call failed
+            return; 
           }
         } catch (err) {
           addSystemMessage(`❌ Cancel failed: ${err.message}`, 'danger');
@@ -1616,13 +1616,13 @@ const withdrawFromSavingsPlan = async (plan) => {
         }
       }
       
-      // Remove from local state
+     
       setSavingsPlans(prev => prev.filter(p => p.id !== id));
       const stored = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
       const updated = stored.filter(p => p.id !== id);
       localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(updated));
       
-      // Delete from backend
+     
       try {
         await fetch(`${API_URL}/api/v1/savings/plan/${id}`, {
           method: 'DELETE',
@@ -1639,7 +1639,7 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCoun
     if (!account) return false;
     
     const MAX_RETRIES = 3;
-    const RETRY_DELAY = 2000; // 2 seconds
+    const RETRY_DELAY = 2000; 
     
     try {
       const data = {
@@ -1816,7 +1816,7 @@ const loadFromBackend = async () => {
         if (localOnlySchedules.length || localOnlyPlans.length) {
           console.log('📦 Kept local-only:', localOnlySchedules.length, 'schedules,', localOnlyPlans.length, 'plans');
           console.log('🔄 Syncing local-only items to backend in 3s...');
-          // Delay sync to allow blockchain data to load first
+         
           setTimeout(() => {
             syncToBackend(localOnlySchedules.length > 0, localOnlyPlans.length > 0);
           }, 3000);
@@ -2087,7 +2087,7 @@ const loadFromBackend = async () => {
       if (intent) {
         switch (intent.action) {
           case 'payment':
-            // Update existing streaming message instead of adding new one
+            
             const paymentResult = await executePayment(intent);
             setMessages(prev => prev.map(m => 
               m.id === streamId 
@@ -2098,7 +2098,7 @@ const loadFromBackend = async () => {
 
           case 'schedule':
             const scheduleResult = await createSchedule(intent);
-            // Update existing streaming message instead of adding new one
+           
             setMessages(prev => prev.map(m => 
               m.id === streamId 
                 ? { ...m, content: cleanResponse, schedule: scheduleResult, provider: AI_PROVIDERS[selectedProvider].name }
@@ -2108,7 +2108,7 @@ const loadFromBackend = async () => {
 
           case 'savings':
             const savingsResult = await createSavingsPlan(intent);
-            // Update existing streaming message instead of adding new one
+           
             setMessages(prev => prev.map(m => 
               m.id === streamId 
                 ? { ...m, content: cleanResponse, savings: savingsResult, provider: AI_PROVIDERS[selectedProvider].name }
@@ -2221,7 +2221,7 @@ const loadFromBackend = async () => {
             break;
 
           case 'deposit_savings':
-            // Manual deposit to existing savings plan
+           
             if (!intent.planId) {
               addSystemMessage(`❌ No savings plan ID specified.`, 'danger');
               break;
@@ -2253,7 +2253,7 @@ const loadFromBackend = async () => {
               if (result.success) {
                 addSystemMessage(`✅ Deposited ${depositAmount} MNEE to savings!`, 'success');
                 
-                // LOG THE DEPOSIT
+               
                 await logAgentTransaction({
                   user_address: account,
                   agent_address: agentManager.getAddress(),
@@ -2266,7 +2266,7 @@ const loadFromBackend = async () => {
                   savings_plan_id: plan.id
                 });
                 
-                // Update local state
+                
                 setSavingsPlans(prev => prev.map(p => 
                   p.id === plan.id 
                     ? { ...p, totalSaved: (p.totalSaved || 0) + depositAmount, depositsCompleted: (p.depositsCompleted || 0) + 1 }
@@ -2278,7 +2278,7 @@ const loadFromBackend = async () => {
               } else {
                 addSystemMessage(`❌ Deposit failed: ${result.error}`, 'danger');
                 
-                // LOG FAILED DEPOSIT
+                
                 await logAgentTransaction({
                   user_address: account,
                   agent_address: agentManager.getAddress(),
@@ -2297,11 +2297,11 @@ const loadFromBackend = async () => {
             break;
 
           default:
-            // Already updated via streaming, no action needed
+           
             break;
         }
       }
-      // If no intent, the streaming message already has the response
+      
     } catch (err) {
       addSystemMessage(`SYSTEM ERROR: ${err.message}`, 'danger');
     } finally {

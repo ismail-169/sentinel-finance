@@ -106,16 +106,16 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Check backend folder first, then repo root
+
 DEPLOYMENT_PATH = Path(__file__).parent / "deployment.json"
 if not DEPLOYMENT_PATH.exists():
     DEPLOYMENT_PATH = Path(__file__).parent.parent / "deployment.json"
-# Check backend folder first for ABI
+
 ABI_PATH = Path(__file__).parent / "SentinelVault.json"
 if not ABI_PATH.exists():
     ABI_PATH = Path(__file__).parent.parent / "artifacts" / "contracts" / "SentinelVault.sol" / "SentinelVault.json"
 
-# Savings contract ABI
+
 SAVINGS_ABI_PATH = Path(__file__).parent / "SentinelSavings.json"
 
 from prometheus_client import REGISTRY
@@ -169,7 +169,7 @@ def load_contract():
         )
         logger.info("contract_loaded", address=vault_address)
         
-        # Load savings contract if available
+      
         savings_address = deployment.get("savingsContract") or settings.savings_contract_address
         if savings_address and SAVINGS_ABI_PATH.exists():
             savings_abi = json.loads(SAVINGS_ABI_PATH.read_text())["abi"]
@@ -293,7 +293,7 @@ class AgentPaymentRequest(BaseModel):
         except ValueError:
             raise ValueError("Invalid amount format")
 
-# New models for Agent Wallet system
+
 class AgentWalletRegister(BaseModel):
     user_address: str
     agent_address: str
@@ -316,7 +316,7 @@ class RecurringScheduleCreate(BaseModel):
     vendor_address: str
     amount: float
     frequency: str
-    interval_days: Optional[int] = None  # For custom frequencies like "every 6 days"
+    interval_days: Optional[int] = None 
     payment_type: Optional[str] = "vendor"
     execution_time: str = "09:00"
     start_date: Optional[str] = None
@@ -355,12 +355,12 @@ class AgentTransactionLog(BaseModel):
     """Log an agent wallet transaction"""
     user_address: str
     agent_address: str
-    tx_type: str  # 'payment', 'savings_deposit', 'withdrawal', 'funding'
+    tx_type: str 
     amount: float
-    destination: str  # vendor address or savings contract
+    destination: str 
     destination_name: Optional[str] = None
     tx_hash: Optional[str] = None
-    status: str = "success"  # success, failed, pending
+    status: str = "success" 
     schedule_id: Optional[str] = None
     savings_plan_id: Optional[str] = None
     error_message: Optional[str] = None
@@ -1161,7 +1161,7 @@ async def sync_recurring_data(
     auth: bool = Depends(verify_api_key)
 ):
     """Sync all recurring schedules and savings plans from frontend"""
-    # Known fields for schedules
+  
     SCHEDULE_FIELDS = {
         'id', 'user_address', 'vault_address', 'agent_address', 'vendor', 
         'vendor_address', 'amount', 'frequency', 'interval_days', 'payment_type',
@@ -1169,7 +1169,7 @@ async def sync_recurring_data(
         'is_trusted', 'is_active'
     }
     
-    # Known fields for savings plans  
+   
     PLAN_FIELDS = {
         'id', 'user_address', 'vault_address', 'agent_address', 'contract_plan_id',
         'name', 'amount', 'frequency', 'lock_days', 'execution_time', 'start_date',
@@ -1182,7 +1182,7 @@ async def sync_recurring_data(
         synced_plans = 0
         
         for schedule in req.schedules:
-            # Filter to known fields only
+           
             filtered = {k: v for k, v in schedule.items() if k in SCHEDULE_FIELDS}
             filtered["user_address"] = req.user_address
             try:
@@ -1192,7 +1192,7 @@ async def sync_recurring_data(
                 logger.warning("schedule_sync_failed", id=schedule.get('id'), error=str(e))
         
         for plan in req.savings_plans:
-            # Filter to known fields only
+           
             filtered = {k: v for k, v in plan.items() if k in PLAN_FIELDS}
             filtered["user_address"] = req.user_address
             try:
@@ -1308,7 +1308,7 @@ async def log_agent_transaction(
     Called by frontend after agent operations complete.
     """
     try:
-        # Use existing log_execution function from database
+      
         log_id = log_execution(
             schedule_id=req.schedule_id,
             savings_plan_id=req.savings_plan_id,
@@ -1321,7 +1321,7 @@ async def log_agent_transaction(
             error_message=req.error_message
         )
         
-        # Create notification for successful transactions
+       
         if req.status == "success" and req.tx_type in ['payment', 'savings_deposit']:
             dest_name = req.destination_name or req.destination[:10] + "..."
             if req.tx_type == 'payment':
@@ -1373,19 +1373,19 @@ async def get_agent_transactions(
         raise HTTPException(status_code=400, detail="Invalid address")
     
     try:
-        # Get execution history
+       
         history = get_execution_history(user_address.lower(), limit)
         
-        # Filter by type if specified
+       
         if tx_type:
             history = [h for h in history if h.get('execution_type') == tx_type]
         
-        # Format for frontend compatibility
+       
         transactions = []
         for h in history:
             transactions.append({
                 "id": f"agent_{h['id']}",
-                "tx_type": "agent",  # Marker for frontend
+                "tx_type": "agent", 
                 "execution_type": h.get('execution_type', 'unknown'),
                 "agent": user_address.lower(),
                 "destination": h.get('destination', ''),

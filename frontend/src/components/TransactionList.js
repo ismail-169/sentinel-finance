@@ -270,12 +270,12 @@ const StatusBadge = ({ status, isAgentTx }) => {
       color: 'var(--accent-blue)', 
       bg: 'rgba(0, 102, 255, 0.2)' 
     },
-    // Agent transaction statuses
+    
     agent_success: { icon: Bot, label: 'AGENT TX', color: '#60a5fa', bg: 'rgba(96, 165, 250, 0.2)' },
     agent_failed: { icon: XCircle, label: 'FAILED', color: 'var(--accent-red)', bg: 'rgba(255, 59, 48, 0.2)' }
   };
 
-  // Determine the status key
+  
   let statusKey = status;
   if (isAgentTx) {
     statusKey = status === 'success' || status === 'executed' ? 'agent_success' : 'agent_failed';
@@ -333,11 +333,11 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
   const [showActions, setShowActions] = useState(false);
   const [, setTick] = useState(0);
   
-  // Check if this is an agent transaction
+  
   const isAgentTx = tx.isAgentTx || tx.txType === 'agent';
   
   useEffect(() => {
-    // Only set up timer for vault transactions with timelock
+    
     if (isAgentTx) return;
     
     const now = Math.floor(Date.now() / 1000);
@@ -348,12 +348,12 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
   }, [tx.executed, tx.revoked, tx.executeAfter, isAgentTx]);
   
   const getStatus = () => {
-    // Agent transactions have simpler status
+    
     if (isAgentTx) {
       return tx.status === 'success' ? 'executed' : tx.status === 'failed' ? 'revoked' : 'pending';
     }
     
-    // Vault transaction status logic
+   
     if (tx.executed) return 'executed';
     if (tx.revoked) return 'revoked';
     const now = Math.floor(Date.now() / 1000);
