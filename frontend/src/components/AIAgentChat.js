@@ -84,6 +84,8 @@ RESPONSE FORMAT - Always include JSON for actions:
     - Examples: "every 3 days" → frequency: "custom", intervalDays: 3
                "every 2 weeks" → frequency: "custom", intervalDays: 14
 3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "startTime": "HH:MM", "reason": "description"}
+    - CRITICAL: You MUST ask the user for the "lock duration" (days) if they have not specified it.
+    - DO NOT generate this JSON if lockDays is unknown. Ask: "For how many days would you like to lock these funds?"
     - Ask user what TIME they want deposits to occur (e.g., "9:00 AM", "6:00 PM")
     - If user says "now" or "immediately", use current time
     - startTime should be in 24-hour format like "09:00" or "18:00"
@@ -892,9 +894,14 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     return { vendor: newSchedule.vendor, amount: newSchedule.amount, frequency: displayFrequency, nextDate: newSchedule.nextDate };
   };
 
-  const createSavingsPlan = async (intent) => {
+ const createSavingsPlan = async (intent) => {
     const amount = parseFloat(intent.amount);
-    const lockDays = parseInt(intent.lockDays) || 365;
+
+    if (!intent.lockDays) {
+       addSystemMessage(`⚠️ Lock duration missing. Please specify how many days (e.g., "for 30 days").`, 'warning');
+       return null;
+    }
+    const lockDays = parseInt(intent.lockDays);
     const frequency = intent.frequency || 'weekly';
     
     const balanceCheck = await checkAgentBalance(amount, 'savings deposit');
