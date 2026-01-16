@@ -285,7 +285,7 @@ const StatusBadge = ({ status, isAgentTx }) => {
 
   return (
     <div className="status-badge" style={{ backgroundColor: bg, color: color, borderColor: color }}>
-      {typeof Icon === 'function' ? <Icon size={10} strokeWidth={3} /> : Icon}
+      {typeof Icon === 'function' ? <Icon size={10} strokeWidth={3} /> : <Icon size={10} strokeWidth={3} />}
       <span>{label}</span>
       <style jsx>{`
         .status-badge {
