@@ -818,18 +818,19 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
         isLoading={loadingTxId === pendingRevokeTxId}
       />
 
-    <style jsx>{`
+   <style jsx>{`
   .tx-header-row {
     display: grid;
     grid-template-columns: minmax(120px, 1.5fr) minmax(80px, 1fr) minmax(200px, 2fr) minmax(80px, 1fr) minmax(120px, 1.5fr) 50px 40px;
-    gap: 16px;
+    gap: 24px; /* Increased gap for spacing out texts */
     padding: 16px 24px;
-    background: var(--text-primary, #ffcc00);
+    background: linear-gradient(to right, var(--text-primary, #ffcc00), #e6b800);
     color: var(--bg-primary, #1a1a1a);
     font-family: var(--font-pixel);
     font-size: 11px;
     text-transform: uppercase;
     border-bottom: 2px solid var(--border-color, #ffcc00);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
 
   .tx-row {
@@ -844,7 +845,7 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
   .tx-main {
     display: grid;
     grid-template-columns: minmax(120px, 1.5fr) minmax(80px, 1fr) minmax(200px, 2fr) minmax(80px, 1fr) minmax(120px, 1.5fr) 50px 40px;
-    gap: 16px;
+    gap: 24px; /* Increased gap for spacing out texts */
     padding: 16px 24px;
     cursor: pointer;
     align-items: center;
@@ -853,7 +854,7 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
   .col {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px; /* Larger gap for better text/icon spacing */
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -861,7 +862,7 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
 
   .id-col, .time-col { justify-content: flex-start; }
   .amount-col { justify-content: flex-end; font-weight: 700; }
-  .address-col { flex-direction: column; gap: 4px; }
+  .address-col { flex-direction: column; gap: 6px; /* Slightly more space in addresses */ }
   .risk-col { justify-content: center; }
   .actions-col, .expand-col { justify-content: center; }
 
@@ -869,6 +870,7 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
     padding: 24px;
     background: var(--bg-secondary, #252525);
     border-top: 2px solid var(--border-color, #ffcc00);
+    min-height: 50px;
   }
 
   .detail-grid {
@@ -896,6 +898,68 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
     word-break: break-all;
   }
 
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #1a1a1a; /* Black background for typing area */
+    border: 2px solid var(--border-color, #ffcc00);
+    padding: 0 16px;
+    flex: 1;
+    min-width: 200px;
+    color: var(--text-primary, #ffcc00);
+  }
+
+  .search-box input {
+    flex: 1;
+    padding: 12px 0;
+    border: none;
+    background: transparent;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary, #ffcc00);
+  }
+
+  .search-box input::placeholder {
+    color: var(--text-muted, #b38f00);
+  }
+
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Spaced out filters */
+    background: var(--bg-card, #2a2a2a);
+    border: 2px solid var(--border-color, #ffcc00);
+    padding: 0 12px;
+    color: var(--text-primary, #ffcc00);
+  }
+
+  .filter-group select {
+    padding: 12px 8px;
+    border: none;
+    background: transparent;
+    font-family: var(--font-pixel);
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-primary, #ffcc00);
+  }
+
+  .status-badge, .risk-indicator {
+    padding: 6px 12px; /* Wider padding for spaced text */
+    border-radius: 4px;
+  }
+
+  .tx-hash-link, .addr-val {
+    color: #60a5fa;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .tx-hash-link:hover, .addr-val:hover {
+    color: #3b82f6;
+    text-decoration: underline;
+  }
+
   @media (max-width: 1024px) {
     .tx-header-row, .tx-main {
       grid-template-columns: minmax(100px, 1.5fr) minmax(80px, 1fr) minmax(150px, 2fr) 50px 40px;
@@ -911,27 +975,6 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
     }
     .tx-header-row span:nth-child(3), .tx-main .col:nth-child(3) { display: none; }
     .amount-col { justify-content: flex-start; }
-  }
-
-  .tx-header-row {
-    background: linear-gradient(to right, var(--text-primary, #ffcc00), #e6b800);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  }
-
-  .status-badge, .risk-indicator {
-    padding: 6px 10px;
-    border-radius: 4px;
-  }
-
-  .tx-hash-link, .addr-val {
-    color: #60a5fa;
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  .tx-hash-link:hover, .addr-val:hover {
-    color: #3b82f6;
-    text-decoration: underline;
   }
 `}</style>
     </div>
