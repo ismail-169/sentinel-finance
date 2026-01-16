@@ -502,6 +502,40 @@ const loadAgentTransactions = useCallback(async () => {
   }
 }, [account]);
 
+  const syncAllToBackend = useCallback(async () => {
+    if (!account) return;
+
+   
+    if (transactions.length > 0) {
+      await apiCall('/api/v1/transactions/sync', {
+        method: 'POST',
+        body: JSON.stringify({ user_address: account, transactions })
+      });
+    }
+
+    if (vendors.length > 0) {
+      await apiCall('/api/v1/vendors/sync', {
+        method: 'POST',
+        body: JSON.stringify({ user_address: account, vendors })
+      });
+    }
+
+    if (alerts.length > 0) {
+      await apiCall('/api/v1/alerts/sync', {
+        method: 'POST',
+        body: JSON.stringify({ user_address: account, alerts })
+      });
+    }
+    
+    console.log('✅ Background sync complete');
+  }, [account, transactions, vendors, alerts]);
+
+  useEffect(() => {
+    if (account && (transactions.length > 0 || vendors.length > 0)) {
+       const timer = setTimeout(() => syncAllToBackend(), 5000); 
+       return () => clearTimeout(timer);
+    }
+  }, [account, transactions, vendors, syncAllToBackend]);
 
   useEffect(() => {
     if (appState === 'dashboard' && vault) {

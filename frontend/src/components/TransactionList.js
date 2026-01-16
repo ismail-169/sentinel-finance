@@ -491,15 +491,15 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
               className="tx-hash-link"
               onClick={(e) => e.stopPropagation()}
             >
-              <ExternalLink size={10} /> TX
+              {tx.txHash.slice(0, 20)}... <ExternalLink size={10} />
             </a>
           )}
         </div>
 
-        {/* Actions column - only for vault transactions */}
+        {/* Actions column */}
         <div className="col actions-col">
-          {!isAgentTx && isPending && (
-            <button
+          {!isAgentTx && (
+            <button 
               className={`action-trigger ${showActions ? 'active' : ''}`}
               onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
               disabled={isLoading}
@@ -606,24 +606,23 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
  const filteredTxs = transactions.filter(tx => {
   const isAgentTx = tx.isAgentTx || tx.txType === 'agent';
   
-  // Status filter
+ 
   if (statusFilter !== 'all') {
     if (statusFilter === 'agent') {
       if (!isAgentTx) return false;
     } else if (isAgentTx) {
-      // For agent txs, map status filter
+     
       if (statusFilter === 'executed' && tx.status !== 'success') return false;
       if (statusFilter === 'revoked' && tx.status !== 'failed') return false;
       if (statusFilter === 'pending' && tx.status === 'success') return false;
     } else {
-      // Vault tx filter logic
+    
       const txStatus = tx.executed ? 'executed' : tx.revoked ? 'revoked' : 
                        (tx.executeAfter <= Date.now()/1000) ? 'ready' : 'pending';
       if (statusFilter !== txStatus) return false;
     }
   }
   
-  // Search filter
   if (searchTerm) {
     const term = searchTerm.toLowerCase();
     const searchableFields = [
@@ -762,14 +761,14 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
 
         <div className="filter-group">
           <Filter size={14} />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-  <option value="all">ALL STATUS</option>
-  <option value="pending">PENDING</option>
-  <option value="ready">READY</option>
-  <option value="executed">EXECUTED</option>
-  <option value="revoked">REVOKED</option>
-  <option value="agent">AGENT TXS</option>  {/* ADD THIS */}
-</select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="all">ALL STATUS</option>
+            <option value="pending">PENDING</option>
+            <option value="ready">READY</option>
+            <option value="executed">EXECUTED</option>
+            <option value="revoked">REVOKED</option>
+            <option value="agent">AGENT TXS</option>
+          </select>
         </div>
       </div>
 
@@ -836,6 +835,7 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
   .tx-row {
     border-bottom: 1px solid var(--bg-secondary, #252525);
     transition: background 0.2s;
+    position: relative;
   }
 
   .tx-row:hover .tx-main {
@@ -944,6 +944,11 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
     color: var(--text-primary, #ffcc00);
   }
 
+  :global(select option) {
+    background: var(--bg-primary, #1a1a1a);
+    color: var(--text-primary, #ffcc00);
+  }
+
   .status-badge, .risk-indicator {
     padding: 6px 12px; /* Wider padding for spaced text */
     border-radius: 4px;
@@ -958,6 +963,49 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
   .tx-hash-link:hover, .addr-val:hover {
     color: #3b82f6;
     text-decoration: underline;
+  }
+
+  .actions-dropdown {
+    position: absolute;
+    right: 80px;
+    top: 100%;
+    z-index: 10;
+    background: var(--bg-card, #2a2a2a);
+    border: 2px solid var(--border-color, #ffcc00);
+    box-shadow: 4px 4px 0 var(--border-color, #ffcc00);
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    min-width: 160px;
+  }
+
+  .actions-dropdown button {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary, #ffcc00);
+    font-family: var(--font-pixel);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.1s;
+  }
+
+  .actions-dropdown button:hover {
+    color: white;
+    background: var(--bg-secondary, #252525);
+  }
+
+  .actions-dropdown button.danger {
+    color: var(--accent-red, #ff3b30);
+  }
+
+  .actions-dropdown button.danger:hover {
+    color: #ff3b30;
+    background: rgba(255, 59, 48, 0.2);
   }
 
   @media (max-width: 1024px) {

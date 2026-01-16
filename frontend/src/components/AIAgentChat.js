@@ -831,20 +831,27 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     return { sufficient: true, balance };
   };
 
-  const createSchedule = async (intent) => {
+ const createSchedule = async (intent) => {
     const vendor = getVendorAddress(intent.vendor);
     const amount = parseFloat(intent.amount);
+
+   
+    const startDate = intent.startDate || new Date().toISOString().split('T')[0];
     
-    const balanceCheck = await checkAgentBalance(amount, `${intent.vendor} payment`);
-    if (!balanceCheck.sufficient) {
-      addMessage(`⚠️ Your Agent Wallet only has ${balanceCheck.balance.toFixed(2)} MNEE, but this recurring payment needs ${amount} MNEE. Would you like to top up your Agent Wallet first? Say "top up agent with ${Math.ceil(balanceCheck.shortfall * 1.2)} MNEE"`, false, {
-        provider: AI_PROVIDERS[selectedProvider].name,
-        topUpPrompt: { type: 'recurring payment', required: amount, current: balanceCheck.balance, shortfall: balanceCheck.shortfall }
-      });
-      return null;
+   
+    const isStartingToday = new Date(startDate).setHours(0,0,0,0) <= new Date().setHours(0,0,0,0);
+
+       if (isStartingToday) {
+      const balanceCheck = await checkAgentBalance(amount, `${intent.vendor} payment`);
+      if (!balanceCheck.sufficient) {
+        addMessage(`⚠️ Your Agent Wallet only has ${balanceCheck.balance.toFixed(2)} MNEE, but this recurring payment needs ${amount} MNEE. Would you like to top up your Agent Wallet first? Say "top up agent with ${Math.ceil(balanceCheck.shortfall * 1.2)} MNEE"`, false, {
+          provider: AI_PROVIDERS[selectedProvider].name,
+          topUpPrompt: { type: 'recurring payment', required: amount, current: balanceCheck.balance, shortfall: balanceCheck.shortfall }
+        });
+        return null;
+      }
     }
 
-    const startDate = intent.startDate || new Date().toISOString().split('T')[0];
     const startTime = intent.startTime || null;
     
   
@@ -1742,8 +1749,9 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCoun
 const loadFromBackend = async () => {
     if (!account) return false;
     
-    const localSchedules = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
-    const localPlans = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
+   
+    const localSchedulesBackup = JSON.parse(localStorage.getItem(`sentinel_schedules_${account}`) || '[]');
+    const localPlansBackup = JSON.parse(localStorage.getItem(`sentinel_savings_${account}`) || '[]');
     
     try {
       const response = await fetch(`${API_URL}/api/v1/recurring/${account}`, {
@@ -1753,6 +1761,7 @@ const loadFromBackend = async () => {
       if (response.ok) {
         const data = await response.json();
         
+       
         const backendSchedules = (data.schedules || []).map(s => ({
           id: s.id,
           vendor: s.vendor,
@@ -1789,22 +1798,21 @@ const loadFromBackend = async () => {
           contractPlanId: p.contract_plan_id
         }));
         
-       const backendScheduleIds = new Set(backendSchedules.map(s => s.id));
+       
+        const backendScheduleIds = new Set(backendSchedules.map(s => s.id));
         const backendPlanIds = new Set(backendPlans.map(p => p.id));
         
-        const localOnlySchedules = localSchedules.filter(s => !backendScheduleIds.has(s.id));
-        const localOnlyPlans = localPlans.filter(p => !backendPlanIds.has(p.id));
+        const localOnlySchedules = localSchedulesBackup.filter(s => !backendScheduleIds.has(s.id));
+        const localOnlyPlans = localPlansBackup.filter(p => !backendPlanIds.has(p.id));
         
         const smartMergedPlans = backendPlans.map(bp => {
-          const localPlan = localPlans.find(lp => lp.id === bp.id);
+          const localPlan = localPlansBackup.find(lp => lp.id === bp.id);
           if (localPlan) {
             return {
               ...bp,
               totalSaved: Math.max(bp.totalSaved || 0, localPlan.totalSaved || 0),
-              totalDeposited: Math.max(bp.totalDeposited || 0, localPlan.totalDeposited || 0),
               depositsCompleted: Math.max(bp.depositsCompleted || 0, localPlan.depositsCompleted || 0),
-              contractPlanId: bp.contractPlanId || localPlan.contractPlanId,
-              executionTime: bp.executionTime || localPlan.executionTime || '09:00'
+              contractPlanId: bp.contractPlanId || localPlan.contractPlanId
             };
           }
           return bp;
@@ -1819,23 +1827,20 @@ const loadFromBackend = async () => {
         localStorage.setItem(`sentinel_schedules_${account}`, JSON.stringify(mergedSchedules));
         localStorage.setItem(`sentinel_savings_${account}`, JSON.stringify(mergedPlans));
         
-        console.log('✅ Loaded from backend:', backendSchedules.length, 'schedules,', backendPlans.length, 'plans');
-        if (localOnlySchedules.length || localOnlyPlans.length) {
-          console.log('📦 Kept local-only:', localOnlySchedules.length, 'schedules,', localOnlyPlans.length, 'plans');
-          console.log('🔄 Syncing local-only items to backend in 3s...');
-         
-          setTimeout(() => {
-            syncToBackend(localOnlySchedules.length > 0, localOnlyPlans.length > 0);
-          }, 3000);
+        if (localOnlySchedules.length > 0 || localOnlyPlans.length > 0) {
+          console.log('🔄 Syncing local-only items to backend...');
+          syncToBackend(true, true);
         }
+        
         return true;
       }
     } catch (error) {
-      console.error('Backend load failed, using localStorage:', error);
+      console.error('Backend load failed, using localStorage backup:', error);
+      setSchedules(localSchedulesBackup);
+      setSavingsPlans(localPlansBackup);
+      return false;
     }
     
-    setSchedules(localSchedules);
-    setSavingsPlans(localPlans);
     return false;
   };
 
