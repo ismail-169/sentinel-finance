@@ -187,7 +187,7 @@ class SentinelWatchdog:
             "start_time": None
         }
 
-   def load_contract(self):
+    def load_contract(self):
         if not DEPLOYMENT_PATH.exists():
             raise FileNotFoundError("deployment.json not found")
 
