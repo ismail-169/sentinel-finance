@@ -715,15 +715,14 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     return { sufficient: true, balance };
   };
 
- const createSchedule = async (intent) => {
+const createSchedule = async (intent) => {
     const vendor = getVendorAddress(intent.vendor);
     const amount = parseFloat(intent.amount);
 
-   
-    const startDate = intent.startDate || new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const startDate = now.toISOString().split('T')[0];
     
-   
-    const isStartingToday = new Date(startDate).setHours(0,0,0,0) <= new Date().setHours(0,0,0,0);
+    const isStartingToday = true;
 
        if (isStartingToday) {
       const balanceCheck = await checkAgentBalance(amount, `${intent.vendor} payment`);
@@ -754,10 +753,13 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     }
     
     
-    let startDateTime = new Date(startDate);
+   let startDateTime = new Date();
     if (startTime) {
       const [hours, minutes] = startTime.split(':').map(Number);
       startDateTime.setHours(hours, minutes, 0, 0);
+      if (startDateTime <= new Date()) {
+        startDateTime.setDate(startDateTime.getDate() + 1);
+      }
     }
     
     const newSchedule = {
@@ -768,9 +770,9 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       frequency: frequency,
       intervalDays: intervalDays,
       displayFrequency: displayFrequency,
-      startDate: startDate,
+      startDate: new Date().toISOString().split('T')[0],
       startTime: startTime,
-      nextDate: calculateNextDate(frequency, startDateTime, startTime, intervalDays),
+      nextDate: startDateTime.toISOString(),
       reason: intent.reason || 'Scheduled payment',
       isTrusted: vendor.isTrusted,
       useAgentWallet: true,
