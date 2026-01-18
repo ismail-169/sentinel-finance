@@ -244,7 +244,7 @@ export default function Onboarding({
               <Droplets size={32} />
             </div>
             <h2>ACQUIRE ASSETS</h2>
-            <p>CLAIM TESTNET MNEE TOKENS TO PROCEED</p>
+           <p>{network === 'sepolia' ? 'CLAIM TESTNET MNEE TOKENS TO PROCEED' : 'ACQUIRE MNEE TOKENS TO PROCEED'}</p>
 
             {wrongChain && (
               <div className="wrong-chain-banner">
@@ -260,7 +260,7 @@ export default function Onboarding({
               <div className="balance-box">
                 <div className="bal-header">
                   <Coins size={14} />
-                  <span>TEST MNEE</span>
+                  <span>{network === 'sepolia' ? 'TEST MNEE' : 'MNEE'}</span>
                 </div>
                 <span className="bal-value">{parseFloat(walletBalance).toLocaleString()}</span>
               </div>
@@ -310,6 +310,31 @@ export default function Onboarding({
                   {refreshing ? 'REFRESHING...' : 'REFRESH BALANCE'}
                 </button>
               </div>
+           )}
+
+            {needsEth && network !== 'sepolia' && (
+              <div className="eth-section">
+                <div className="warning-banner">
+                  <AlertCircle size={14} />
+                  <span>ETH REQUIRED FOR GAS FEES</span>
+                </div>
+                <div className="wallet-box">
+                  <span className="wallet-label">YOUR ADDRESS:</span>
+                  <div className="wallet-row">
+                    <code>{account?.slice(0, 12)}...{account?.slice(-10)}</code>
+                    <button className="copy-btn" onClick={copyAddress}>
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                </div>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', textAlign: 'left' }}>
+                  TRANSFER ETH FROM AN EXCHANGE OR ANOTHER WALLET TO CONTINUE
+                </p>
+                <button className="refresh-btn" onClick={loadBalanceAndStatus} disabled={refreshing}>
+                  {refreshing ? <Loader size={12} className="spin" /> : <Loader size={12} />}
+                  {refreshing ? 'REFRESHING...' : 'REFRESH BALANCE'}
+                </button>
+              </div>
             )}
 
             {!needsEth && parseFloat(walletBalance) > 0 && (
@@ -319,7 +344,7 @@ export default function Onboarding({
               </div>
             )}
 
-            <div className="action-row">
+           <div className="action-row">
               {!needsEth && network === 'sepolia' && (
                 <button 
                   className="primary-btn"
@@ -333,11 +358,23 @@ export default function Onboarding({
               
               {!needsEth && parseFloat(walletBalance) > 0 && (
                 <button 
-                  className="secondary-btn"
+                  className={network === 'sepolia' ? 'secondary-btn' : 'primary-btn'}
                   onClick={() => setStep(2)}
                 >
                   CONTINUE <ArrowRight size={16} />
                 </button>
+              )}
+
+              {!needsEth && parseFloat(walletBalance) === 0 && network !== 'sepolia' && (
+                <div style={{ textAlign: 'center', width: '100%' }}>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    TRANSFER MNEE TO YOUR WALLET TO CONTINUE
+                  </p>
+                  <button className="refresh-btn" onClick={loadBalanceAndStatus} disabled={refreshing}>
+                    {refreshing ? <Loader size={12} className="spin" /> : <Loader size={12} />}
+                    {refreshing ? 'REFRESHING...' : 'REFRESH BALANCE'}
+                  </button>
+                </div>
               )}
             </div>
           </motion.div>
