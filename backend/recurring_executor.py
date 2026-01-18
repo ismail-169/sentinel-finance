@@ -580,77 +580,92 @@ class RecurringDatabase:
         """Delete old execution logs"""
         raise NotImplementedError
 
+    def _parse_datetime(value) -> datetime:
+    """
+    Parse datetime value that could be either:
+    - A datetime object (from PostgreSQL TIMESTAMP columns)
+    - An ISO string (from PostgreSQL TEXT columns or SQLite)
+    - None
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        # Remove 'Z' timezone indicator and parse
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return None
 
 
-class SQLiteRecurringDatabase(RecurringDatabase):
-    """SQLite implementation of RecurringDatabase interface"""
+class PostgreSQLRecurringDatabase(RecurringDatabase):
+    """PostgreSQL implementation of RecurringDatabase interface"""
     
     def __init__(self):
         from database import init_db
         init_db()
     
     async def get_due_payments(self, now: datetime) -> List[RecurringPayment]:
-        from database import get_due_schedules, get_due_savings_deposits
-        
-        payments = []
-        
-       
-        schedules = get_due_schedules(now)
-        for s in schedules:
-            payments.append(RecurringPayment(
-                id=s['id'],
-                user_address=s['user_address'],
-                agent_wallet_address=s.get('agent_address', ''),
-                vault_address=s['vault_address'],
-                payment_type=PaymentType.VENDOR,
-                destination=s['vendor_address'],
-                destination_name=s['vendor'],
-                amount=s['amount'],
-                frequency=PaymentFrequency(s['frequency']),
-                execution_time=s.get('execution_time', '09:00'),
-                next_execution=datetime.fromisoformat(s['next_execution']),
-                is_active=bool(s['is_active']),
-                created_at=datetime.fromisoformat(s['created_at']),
-                last_executed=datetime.fromisoformat(s['last_executed']) if s.get('last_executed') else None,
-                execution_count=s.get('execution_count', 0)
-            ))
-        
-       
-        deposits = get_due_savings_deposits(now)
-        for d in deposits:
-            payments.append(RecurringPayment(
-                id=d['id'],
-                user_address=d['user_address'],
-                agent_wallet_address=d.get('agent_address', ''),
-                vault_address=d['vault_address'],
-                payment_type=PaymentType.SAVINGS,
-                destination=str(d.get('contract_plan_id', '')),
-                destination_name=d['name'],
-                amount=d['amount'],
-                frequency=PaymentFrequency(d.get('frequency', 'monthly')),
-                execution_time=d.get('execution_time', '09:00'),
-                next_execution=datetime.fromisoformat(d['next_deposit']) if d.get('next_deposit') else datetime.utcnow(),
-                is_active=bool(d['is_active']),
-                created_at=datetime.fromisoformat(d['created_at']),
-                savings_plan_id=d.get('contract_plan_id')
-            ))
-        
-        return payments
+    from database import get_due_schedules, get_due_savings_deposits
+    
+    payments = []
+    
+    
+    schedules = get_due_schedules(now)
+    for s in schedules:
+        payments.append(RecurringPayment(
+            id=s['id'],
+            user_address=s['user_address'],
+            agent_wallet_address=s.get('agent_address', ''),
+            vault_address=s['vault_address'],
+            payment_type=PaymentType.VENDOR,
+            destination=s['vendor_address'],
+            destination_name=s['vendor'],
+            amount=s['amount'],
+            frequency=PaymentFrequency(s['frequency']),
+            execution_time=s.get('execution_time', '09:00'),
+            next_execution=self._parse_datetime(s['next_execution']),  
+            is_active=bool(s['is_active']),
+            created_at=self._parse_datetime(s['created_at']),  
+            last_executed=self._parse_datetime(s.get('last_executed')),  
+            execution_count=s.get('execution_count', 0)
+        ))
+    
+    
+    deposits = get_due_savings_deposits(now)
+    for d in deposits:
+        payments.append(RecurringPayment(
+            id=d['id'],
+            user_address=d['user_address'],
+            agent_wallet_address=d.get('agent_address', ''),
+            vault_address=d['vault_address'],
+            payment_type=PaymentType.SAVINGS,
+            destination=str(d.get('contract_plan_id', '')),
+            destination_name=d['name'],
+            amount=d['amount'],
+            frequency=PaymentFrequency(d.get('frequency', 'monthly')),
+            execution_time=d.get('execution_time', '09:00'),
+            next_execution=self._parse_datetime(d.get('next_deposit')) or datetime.utcnow(),  
+            is_active=bool(d['is_active']),
+            created_at=self._parse_datetime(d['created_at']),  
+            savings_plan_id=d.get('contract_plan_id')
+        ))
+    
+    return payments
     
     async def get_agent_wallet(self, user_address: str) -> Optional[AgentWallet]:
-        from database import get_agent_wallet
-        
-        wallet = get_agent_wallet(user_address)
-        if not wallet:
-            return None
-        
-        return AgentWallet(
-            user_address=wallet['user_address'],
-            agent_address=wallet['agent_address'],
-            encrypted_key=wallet['encrypted_key'],
-            vault_address=wallet['vault_address'],
-            created_at=datetime.fromisoformat(wallet['created_at'])
-        )
+    from database import get_agent_wallet
+    
+    wallet = get_agent_wallet(user_address)
+    if not wallet:
+        return None
+    
+    return AgentWallet(
+        user_address=wallet['user_address'],
+        agent_address=wallet['agent_address'],
+        encrypted_key=wallet['encrypted_key'],
+        vault_address=wallet['vault_address'],
+        created_at=self._parse_datetime(wallet['created_at']) 
+    )
     
     async def update_payment_execution(self, payment_id: str, tx_hash: str, next_date: datetime):
         from database import update_schedule_execution, update_savings_deposit, log_execution
@@ -705,32 +720,32 @@ class SQLiteRecurringDatabase(RecurringDatabase):
             return [row[0] for row in cursor.fetchall()]
     
     async def get_upcoming_payments(self, user_address: str, days: int) -> List[RecurringPayment]:
-        from database import get_recurring_schedules, get_savings_plans
-        
-        payments = []
-        cutoff = datetime.utcnow() + timedelta(days=days)
-        
-        schedules = get_recurring_schedules(user_address, active_only=True)
-        for s in schedules:
-            next_exec = datetime.fromisoformat(s['next_execution'])
-            if next_exec <= cutoff:
-                payments.append(RecurringPayment(
-                    id=s['id'],
-                    user_address=s['user_address'],
-                    agent_wallet_address=s.get('agent_address', ''),
-                    vault_address=s['vault_address'],
-                    payment_type=PaymentType.VENDOR,
-                    destination=s['vendor_address'],
-                    destination_name=s['vendor'],
-                    amount=s['amount'],
-                    frequency=PaymentFrequency(s['frequency']),
-                    execution_time=s.get('execution_time', '09:00'),
-                    next_execution=next_exec,
-                    is_active=True,
-                    created_at=datetime.fromisoformat(s['created_at'])
-                ))
-        
-        return payments
+    from database import get_recurring_schedules, get_savings_plans
+    
+    payments = []
+    cutoff = datetime.utcnow() + timedelta(days=days)
+    
+    schedules = get_recurring_schedules(user_address, active_only=True)
+    for s in schedules:
+        next_exec = self._parse_datetime(s['next_execution'])  
+        if next_exec and next_exec <= cutoff:
+            payments.append(RecurringPayment(
+                id=s['id'],
+                user_address=s['user_address'],
+                agent_wallet_address=s.get('agent_address', ''),
+                vault_address=s['vault_address'],
+                payment_type=PaymentType.VENDOR,
+                destination=s['vendor_address'],
+                destination_name=s['vendor'],
+                amount=s['amount'],
+                frequency=PaymentFrequency(s['frequency']),
+                execution_time=s.get('execution_time', '09:00'),
+                next_execution=next_exec,
+                is_active=True,
+                created_at=self._parse_datetime(s['created_at'])  
+            ))
+    
+    return payments
     
     async def create_notification(self, data: Dict[str, Any]):
         from database import create_notification
@@ -759,7 +774,7 @@ if __name__ == "__main__":
         network = os.getenv('EXECUTOR_NETWORK', 'mainnet')
         logger.info(f"🚀 Initializing Recurring Payment Executor... network={network}")
         
-        db = SQLiteRecurringDatabase()
+        db = PostgreSQLRecurringDatabase()
         executor = RecurringExecutor(db, network=network)
         
         await executor.start()
