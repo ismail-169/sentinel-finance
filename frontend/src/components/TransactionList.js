@@ -329,7 +329,7 @@ const RiskIndicator = ({ score }) => {
   );
 };
 
-constconst TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle, isLoading, explorerUrl }) => {
+const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle, isLoading, explorerUrl }) => {
   const [showActions, setShowActions] = useState(false);
   const [, setTick] = useState(0);
   
