@@ -6,8 +6,3 @@ cmds = ["pip install -r requirements.txt"]
 
 [start]
 cmd = "python -m uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}"
-```
-
-Or create `runtime.txt` in `backend/`:
-```
-python-3.11.9
