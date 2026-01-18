@@ -93,12 +93,25 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default_factory=lambda: secrets.token_hex(32))
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
-    rpc_url: str = "https://rpc.sepolia.org"
+    
+   
+    default_network: str = "mainnet"
+    
+  
+    sepolia_rpc_url: str = "https://rpc.sepolia.org"
+    sepolia_mnee_token: str = "0x250ff89cf1518F42F3A4c927938ED73444491715"
+    sepolia_savings_contract: str = "0xcF493dB2D2B4BffB8A38f961276019D5a00480DB"
+    sepolia_vault_factory: str = "0xfD3af9554C45211c228B8E7498B26A325669A484"
+    
+   
+    mainnet_rpc_url: str = "https://eth.llamarpc.com"
+    mainnet_mnee_token: str = "0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF"
+    mainnet_savings_contract: str = "0xb1c74612c81fe8f685c1a3586d753721847d4549"
+    mainnet_vault_factory: str = "0x4061a452ce5927c2420060eb7a680798b86e0117"
+    
     allowed_origins: str = "https://sentinelfinance.xyz,https://www.sentinelfinance.xyz,http://localhost:3000"
     rate_limit: str = "100/minute"
     debug: bool = False
-    savings_contract_address: str = "0x21955e81ca4063f41080d12d3113F6ec54E7b692"
-    mnee_token_address: str = "0x250ff89cf1518F42F3A4c927938ED73444491715"
 
     class Config:
         env_file = ".env"
@@ -141,54 +154,101 @@ limiter = Limiter(key_func=get_remote_address)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
 
-w3 = Web3(Web3.HTTPProvider(settings.rpc_url))
+
+w3_sepolia = Web3(Web3.HTTPProvider(settings.sepolia_rpc_url))
+w3_mainnet = Web3(Web3.HTTPProvider(settings.mainnet_rpc_url))
+
+
+contracts = {
+    'sepolia': {
+        'w3': w3_sepolia,
+        'vault': None,
+        'savings': None,
+        'mnee_token': settings.sepolia_mnee_token,
+        'savings_contract': settings.sepolia_savings_contract,
+        'vault_factory': settings.sepolia_vault_factory
+    },
+    'mainnet': {
+        'w3': w3_mainnet,
+        'vault': None,
+        'savings': None,
+        'mnee_token': settings.mainnet_mnee_token,
+        'savings_contract': settings.mainnet_savings_contract,
+        'vault_factory': settings.mainnet_vault_factory
+    }
+}
+
+
+w3 = w3_mainnet if settings.default_network == 'mainnet' else w3_sepolia
 vault = None
 savings_contract = None
 
-def load_contract():
-    global vault, savings_contract
+def load_contracts():
+    """Load contracts for both Sepolia and Mainnet"""
+    global vault, savings_contract, contracts
+    
     if not DEPLOYMENT_PATH.exists():
-        logger.warning("deployment.json not found - running without contract")
-        return None
-    if not ABI_PATH.exists():
-        logger.warning("Contract ABI not found - running without contract")
-        return None
+        logger.warning("deployment.json not found - running without contracts")
+        return
     
     try:
         deployment = json.loads(DEPLOYMENT_PATH.read_text())
-        abi = json.loads(ABI_PATH.read_text())["abi"]
         
-        vault_address = deployment.get("vaultAddress") or deployment.get("vaultFactory")
-        if not vault_address:
-            logger.warning("No vault address in deployment.json - running without contract")
-            return None
+       
+        if 'networks' in deployment:
+            networks_data = deployment['networks']
+        else:
+           
+            networks_data = {'sepolia': deployment}
+        
+       
+        for network in ['sepolia', 'mainnet']:
+            if network not in networks_data:
+                logger.warning(f"No deployment data for {network}")
+                continue
             
-        vault = w3.eth.contract(
-            address=Web3.to_checksum_address(vault_address),
-            abi=abi
-        )
-        logger.info("contract_loaded", address=vault_address)
+            try:
+                network_data = networks_data[network]
+                w3_instance = contracts[network]['w3']
+                
+                
+                savings_addr = network_data.get('savingsContract') or contracts[network]['savings_contract']
+                if savings_addr and SAVINGS_ABI_PATH.exists():
+                    savings_abi = json.loads(SAVINGS_ABI_PATH.read_text())["abi"]
+                    contracts[network]['savings'] = w3_instance.eth.contract(
+                        address=Web3.to_checksum_address(savings_addr),
+                        abi=savings_abi
+                    )
+                    logger.info(f"{network}_savings_loaded", address=savings_addr)
+                
+              
+                vault_addr = network_data.get('vaultFactory') or network_data.get('vaultAddress')
+                if vault_addr and ABI_PATH.exists():
+                    vault_abi = json.loads(ABI_PATH.read_text())["abi"]
+                    contracts[network]['vault'] = w3_instance.eth.contract(
+                        address=Web3.to_checksum_address(vault_addr),
+                        abi=vault_abi
+                    )
+                    logger.info(f"{network}_vault_loaded", address=vault_addr)
+                    
+            except Exception as e:
+                logger.warning(f"{network}_contract_load_failed", error=str(e))
         
       
-        savings_address = deployment.get("savingsContract") or settings.savings_contract_address
-        if savings_address and SAVINGS_ABI_PATH.exists():
-            savings_abi = json.loads(SAVINGS_ABI_PATH.read_text())["abi"]
-            savings_contract = w3.eth.contract(
-                address=Web3.to_checksum_address(savings_address),
-                abi=savings_abi
-            )
-            logger.info("savings_contract_loaded", address=savings_address)
+        default_net = settings.default_network
+        vault = contracts[default_net]['vault']
+        savings_contract = contracts[default_net]['savings']
         
-        return vault
     except Exception as e:
-        logger.warning(f"Contract loading failed: {e} - running without contract")
-        return None
+        logger.warning(f"Contract loading failed: {e} - running without contracts")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    load_contract()
-    logger.info("application_started", api_secret_preview=settings.api_secret[:8] + "...")
+    load_contracts()
+    logger.info("application_started", 
+                default_network=settings.default_network,
+                api_secret_preview=settings.api_secret[:8] + "...")
     yield
     logger.info("application_shutdown")
 
@@ -470,9 +530,19 @@ async def health():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "version": "2.1.0",
-        "blockchain_connected": w3.is_connected(),
-        "contract_loaded": vault is not None,
-        "savings_contract_loaded": savings_contract is not None
+        "default_network": settings.default_network,
+        "networks": {
+            "sepolia": {
+                "connected": w3_sepolia.is_connected(),
+                "vault_loaded": contracts['sepolia']['vault'] is not None,
+                "savings_loaded": contracts['sepolia']['savings'] is not None
+            },
+            "mainnet": {
+                "connected": w3_mainnet.is_connected(),
+                "vault_loaded": contracts['mainnet']['vault'] is not None,
+                "savings_loaded": contracts['mainnet']['savings'] is not None
+            }
+        }
     }
 
 @app.get("/metrics")
@@ -527,37 +597,55 @@ async def lookup_vault(
 
 @app.get("/api/v1/vault/balance")
 @limiter.limit(settings.rate_limit)
-async def get_balance(request: Request, auth: bool = Depends(verify_api_key)):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
+async def get_balance(
+    request: Request, 
+    network: str = "mainnet",
+    auth: bool = Depends(verify_api_key)
+):
+    if network not in ['sepolia', 'mainnet']:
+        raise HTTPException(status_code=400, detail="Invalid network. Use 'sepolia' or 'mainnet'")
+    
+    vault_contract = contracts[network]['vault']
+    if not vault_contract:
+        raise HTTPException(status_code=503, detail=f"{network} contract not loaded")
     
     try:
-        balance = vault.functions.getVaultBalance().call()
+        balance = vault_contract.functions.getVaultBalance().call()
         return {
             "balance_wei": str(balance),
             "balance_formatted": str(balance / 10**18),
+            "network": network,
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error("balance_fetch_failed", error=str(e))
+        logger.error("balance_fetch_failed", network=network, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to fetch balance")
 
 @app.get("/api/v1/vault/limits")
 @limiter.limit(settings.rate_limit)
-async def get_limits(request: Request, auth: bool = Depends(verify_api_key)):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
+async def get_limits(
+    request: Request, 
+    network: str = "mainnet",
+    auth: bool = Depends(verify_api_key)
+):
+    if network not in ['sepolia', 'mainnet']:
+        raise HTTPException(status_code=400, detail="Invalid network")
     
-    daily = vault.functions.dailyLimit().call()
-    tx_limit = vault.functions.transactionLimit().call()
-    timelock = vault.functions.timeLockDuration().call()
+    vault_contract = contracts[network]['vault']
+    if not vault_contract:
+        raise HTTPException(status_code=503, detail=f"{network} contract not loaded")
+    
+    daily = vault_contract.functions.dailyLimit().call()
+    tx_limit = vault_contract.functions.transactionLimit().call()
+    timelock = vault_contract.functions.timeLockDuration().call()
     
     return {
         "daily_limit_wei": str(daily),
         "daily_limit_formatted": str(daily / 10**18),
         "transaction_limit_wei": str(tx_limit),
         "transaction_limit_formatted": str(tx_limit / 10**18),
-        "timelock_duration_seconds": timelock
+        "timelock_duration_seconds": timelock,
+        "network": network
     }
 
 
@@ -741,10 +829,17 @@ async def get_stats_endpoint(request: Request, auth: bool = Depends(verify_api_k
 async def agent_request_payment(
     request: Request,
     req: AgentPaymentRequest,
+    network: str = "mainnet",
     auth: bool = Depends(verify_api_key)
 ):
-    if not vault:
-        raise HTTPException(status_code=503, detail="Contract not loaded")
+    if network not in ['sepolia', 'mainnet']:
+        raise HTTPException(status_code=400, detail="Invalid network")
+    
+    vault_contract = contracts[network]['vault']
+    w3_instance = contracts[network]['w3']
+    
+    if not vault_contract:
+        raise HTTPException(status_code=503, detail=f"{network} contract not loaded")
 
     client_info = await get_client_info(request)
 
@@ -770,22 +865,22 @@ async def agent_request_payment(
         else:
             vendor_address = Web3.to_checksum_address(req.vendor)
             try:
-                is_trusted = vault.functions.trustedVendors(vendor_address).call()
+                is_trusted = vault_contract.functions.trustedVendors(vendor_address).call()
             except:
                 is_trusted = False
 
         amount_wei = int(float(req.amount) * 10**18)
         private_key = req.private_key if req.private_key.startswith("0x") else f"0x{req.private_key}"
-        account = w3.eth.account.from_key(private_key)
-        nonce = w3.eth.get_transaction_count(account.address)
+        account = w3_instance.eth.account.from_key(private_key)
+        nonce = w3_instance.eth.get_transaction_count(account.address)
 
-        gas_estimate = vault.functions.requestPayment(
+        gas_estimate = vault_contract.functions.requestPayment(
             Web3.to_checksum_address(vendor_address),
             amount_wei,
             account.address
         ).estimate_gas({"from": account.address})
 
-        tx = vault.functions.requestPayment(
+        tx = vault_contract.functions.requestPayment(
             Web3.to_checksum_address(vendor_address),
             amount_wei,
             account.address
@@ -793,12 +888,12 @@ async def agent_request_payment(
             "from": account.address,
             "nonce": nonce,
             "gas": int(gas_estimate * 1.2),
-            "gasPrice": w3.eth.gas_price
+            "gasPrice": w3_instance.eth.gas_price
         })
 
-        signed = w3.eth.account.sign_transaction(tx, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        signed = w3_instance.eth.account.sign_transaction(tx, private_key)
+        tx_hash = w3_instance.eth.send_raw_transaction(signed.raw_transaction)
+        receipt = w3_instance.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
 
         amount_float = float(req.amount)
         if is_trusted:

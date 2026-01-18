@@ -35,13 +35,13 @@ export default function Onboarding({
       rpcUrl: 'https://sepolia.drpc.org',
       explorer: 'https://sepolia.etherscan.io'
     },
-    mainnet: {
-      chainId: '0x1',
-      chainIdDecimal: 1,
-      name: 'Mainnet',
-      rpcUrl: 'mainnet.infura.io',
-      explorer: 'https://etherscan.io'
-    }
+   mainnet: {
+  chainId: '0x1',
+  chainIdDecimal: 1,
+  name: 'Mainnet',
+  rpcUrl: 'https://eth.llamarpc.com',
+  explorer: 'https://etherscan.io'
+}
   };
 
   const switchToCorrectChain = async () => {
@@ -80,11 +80,11 @@ export default function Onboarding({
     }
   };
 
-  const ETH_FAUCETS = [
-    { name: 'GOOGLE CLOUD', url: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia' },
-    { name: 'ALCHEMY', url: 'https://www.alchemy.com/faucets/ethereum-sepolia' },
-    { name: 'INFURA', url: 'https://www.infura.io/faucet/sepolia' }
-  ];
+ const ETH_FAUCETS = network === 'sepolia' ? [
+  { name: 'GOOGLE CLOUD', url: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia' },
+  { name: 'ALCHEMY', url: 'https://www.alchemy.com/faucets/ethereum-sepolia' },
+  { name: 'INFURA', url: 'https://www.infura.io/faucet/sepolia' }
+] : [];
 
   useEffect(() => {
     if (mneeContract && account) {
@@ -267,14 +267,13 @@ export default function Onboarding({
               <div className="balance-box">
                 <div className="bal-header">
                   <Fuel size={14} />
-                  <span>SEPOLIA ETH</span>
+               <span>{network === 'sepolia' ? 'SEPOLIA ETH' : 'ETH'}</span>
                 </div>
                 <span className={`bal-value ${needsEth ? 'low' : ''}`}>{parseFloat(ethBalance).toFixed(4)}</span>
               </div>
             </div>
-
-            {needsEth && (
-              <div className="eth-section">
+{needsEth && network === 'sepolia' && (
+  <div className="eth-section">
                 <div className="warning-banner">
                   <AlertCircle size={14} />
                   <span>SEPOLIA ETH REQUIRED FOR GAS</span>

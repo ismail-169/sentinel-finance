@@ -329,7 +329,7 @@ const RiskIndicator = ({ score }) => {
   );
 };
 
-const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle, isLoading }) => {
+constconst TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle, isLoading, explorerUrl }) => {
   const [showActions, setShowActions] = useState(false);
   const [, setTick] = useState(0);
   
@@ -485,7 +485,7 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
           )}
           {isAgentTx && tx.txHash && (
             <a 
-              href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
+              href={`${explorerUrl}/tx/${tx.txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="tx-hash-link"
@@ -552,7 +552,7 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
                     <div className="detail-item">
                       <span className="detail-label">TX HASH</span>
                       <a 
-                        href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
+                        href={`${explorerUrl}/tx/${tx.txHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="detail-value mono link"
@@ -594,7 +594,7 @@ const TransactionRow = ({ tx, onRevoke, onExecute, onView, isExpanded, onToggle,
     </motion.div>
   );
 };
-export default function TransactionList({ transactions = [], onRevoke, onExecute, contract }) {
+export default function TransactionList({ transactions = [], onRevoke, onExecute, contract, explorerUrl }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
@@ -786,16 +786,17 @@ export default function TransactionList({ transactions = [], onRevoke, onExecute
         <div className="tx-body">
           {filteredTxs.length > 0 ? (
             filteredTxs.map(tx => (
-              <TransactionRow
-                key={tx.id}
-                tx={tx}
-                onRevoke={openRevokeModal}
-                onExecute={handleExecute}
-                onView={(t) => setSelectedTx(t)}
-                isExpanded={expandedId === tx.id}
-                onToggle={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
-                isLoading={loadingTxId === tx.id}
-              />
+            <TransactionRow
+  key={tx.id}
+  tx={tx}
+  onRevoke={openRevokeModal}
+  onExecute={handleExecute}
+  onView={(t) => setSelectedTx(t)}
+  isExpanded={expandedId === tx.id}
+  onToggle={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
+  isLoading={loadingTxId === tx.id}
+  explorerUrl={explorerUrl}
+/>
             ))
           ) : (
             <div className="empty-state">

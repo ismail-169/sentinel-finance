@@ -235,6 +235,7 @@ def init_db():
                 amount REAL NOT NULL,
                 frequency TEXT,
                 lock_days INTEGER NOT NULL,
+                lock_type INTEGER DEFAULT 0,
                 execution_time TEXT DEFAULT '09:00',
                 start_date TEXT NOT NULL,
                 next_deposit TEXT,
@@ -604,10 +605,10 @@ def save_savings_plan(plan: Dict[str, Any]) -> bool:
             cursor.execute("""
                 INSERT INTO savings_plans (
                     id, user_address, agent_address, vault_address, contract_plan_id,
-                    name, amount, frequency, lock_days, execution_time,
+                    name, amount, frequency, lock_days, lock_type, execution_time,
                     start_date, next_deposit, unlock_date, reason, is_recurring,
                     is_active, total_deposits, target_amount, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 plan['id'],
                 plan['user_address'].lower(),
@@ -618,6 +619,7 @@ def save_savings_plan(plan: Dict[str, Any]) -> bool:
                 plan['amount'],
                 plan.get('frequency'),
                 plan['lock_days'],
+                plan.get('lock_type', 0),
                 plan.get('execution_time', '09:00'),
                 plan.get('start_date', now_iso),
                 plan.get('next_deposit'),

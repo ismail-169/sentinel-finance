@@ -33,9 +33,19 @@ logging.basicConfig(
 logger = logging.getLogger('RecurringExecutor')
 
 
-RPC_URL = os.getenv('WEB3_RPC_URL', 'https://eth-sepolia.g.alchemy.com/v2/demo')
-MNEE_ADDRESS = os.getenv('MNEE_TOKEN_ADDRESS', '0x250ff89cf1518F42F3A4c927938ED73444491715')
-SAVINGS_ADDRESS = os.getenv('SAVINGS_CONTRACT_ADDRESS', '')
+SEPOLIA_RPC_URL = os.getenv('SEPOLIA_RPC_URL', 'https://rpc.sepolia.org')
+MAINNET_RPC_URL = os.getenv('MAINNET_RPC_URL', 'https://eth.llamarpc.com')
+DEFAULT_NETWORK = os.getenv('DEFAULT_NETWORK', 'mainnet')
+
+SEPOLIA_MNEE = '0x250ff89cf1518F42F3A4c927938ED73444491715'
+MAINNET_MNEE = '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF'
+
+SEPOLIA_SAVINGS = '0xcF493dB2D2B4BffB8A38f961276019D5a00480DB'
+MAINNET_SAVINGS = '0xb1c74612c81fe8f685c1a3586d753721847d4549'
+
+RPC_URL = MAINNET_RPC_URL if DEFAULT_NETWORK == 'mainnet' else SEPOLIA_RPC_URL
+MNEE_ADDRESS = os.getenv('MNEE_TOKEN_ADDRESS', MAINNET_MNEE if DEFAULT_NETWORK == 'mainnet' else SEPOLIA_MNEE)
+SAVINGS_ADDRESS = os.getenv('SAVINGS_CONTRACT_ADDRESS', MAINNET_SAVINGS if DEFAULT_NETWORK == 'mainnet' else SEPOLIA_SAVINGS)
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 AGENT_ENCRYPTION_KEY = os.getenv('AGENT_ENCRYPTION_KEY', '')
 
@@ -113,24 +123,31 @@ class AgentWallet:
 class RecurringExecutor:
     """Main executor service"""
     
-    def __init__(self, database):
+    def __init__(self, database, network='mainnet'):
+        self.network = network
         self.db = database
-        self.web3 = Web3(Web3.HTTPProvider(RPC_URL))
+        
+        rpc_url = MAINNET_RPC_URL if network == 'mainnet' else SEPOLIA_RPC_URL
+        self.web3 = Web3(Web3.HTTPProvider(rpc_url))
         self.scheduler = AsyncIOScheduler()
+        
+        mnee_addr = MAINNET_MNEE if network == 'mainnet' else SEPOLIA_MNEE
         self.mnee_contract = self.web3.eth.contract(
-            address=Web3.to_checksum_address(MNEE_ADDRESS),
+            address=Web3.to_checksum_address(mnee_addr),
             abi=MNEE_ABI
         )
         
-       
         self.savings_contract = None
-        if SAVINGS_ADDRESS:
+        savings_addr = MAINNET_SAVINGS if network == 'mainnet' else SEPOLIA_SAVINGS
+        if savings_addr:
             savings_abi = load_abi('SentinelSavings.json')
             if savings_abi:
                 self.savings_contract = self.web3.eth.contract(
-                    address=Web3.to_checksum_address(SAVINGS_ADDRESS),
+                    address=Web3.to_checksum_address(savings_addr),
                     abi=savings_abi
                 )
+        
+        logger.info(f"executor_initialized network={network} mnee={mnee_addr} savings={savings_addr}")
     
     async def start(self):
         """Start the scheduler"""
@@ -281,28 +298,18 @@ class RecurringExecutor:
             return 0
     
     def is_valid_destination(self, payment: RecurringPayment, vault_address: str) -> bool:
-        """
-        Validate payment destination
-        Agent wallet can ONLY send to:
-        - User's own vault
-        - Trusted vendors (verified in database)
-        - Savings contract
-        """
         destination = payment.destination.lower()
         vault = vault_address.lower()
         
-       
         if destination == vault:
             return True
         
-       
-        if SAVINGS_ADDRESS and destination == SAVINGS_ADDRESS.lower():
+        savings_addr = MAINNET_SAVINGS if self.network == 'mainnet' else SEPOLIA_SAVINGS
+        if savings_addr and destination == savings_addr.lower():
             return True
         
-       
         if payment.payment_type == PaymentType.VENDOR:
-           
-            return True  # TODO: Implement trusted vendor check
+            return True
         
         return False
     
@@ -310,20 +317,26 @@ class RecurringExecutor:
         """Send MNEE to vendor address"""
         try:
             account = Account.from_key(private_key)
-            
-            
             nonce = self.web3.eth.get_transaction_count(account.address)
-            gas_price = self.web3.eth.gas_price
+            
+            tx_params = {
+                'from': account.address,
+                'nonce': nonce,
+                'gas': 100000,
+            }
+            
+            if self.network == 'sepolia':
+                tx_params['gasPrice'] = self.web3.eth.gas_price
+            else:
+                fee_data = self.web3.eth.fee_history(1, 'latest')
+                base_fee = fee_data['baseFeePerGas'][-1]
+                tx_params['maxFeePerGas'] = int(base_fee * 2)
+                tx_params['maxPriorityFeePerGas'] = self.web3.to_wei(2, 'gwei')
             
             tx = self.mnee_contract.functions.transfer(
                 Web3.to_checksum_address(vendor_address),
                 amount_wei
-            ).build_transaction({
-                'from': account.address,
-                'nonce': nonce,
-                'gas': 100000,
-                'gasPrice': gas_price
-            })
+            ).build_transaction(tx_params)
             
            
             signed_tx = self.web3.eth.account.sign_transaction(tx, private_key)
@@ -349,7 +362,6 @@ class RecurringExecutor:
         amount_wei: int,
         agent_address: str
     ) -> Optional[str]:
-        """Deposit MNEE to savings contract"""
         if not self.savings_contract:
             logger.error("Savings contract not configured")
             return None
@@ -357,33 +369,53 @@ class RecurringExecutor:
         try:
             account = Account.from_key(private_key)
             nonce = self.web3.eth.get_transaction_count(account.address)
-            gas_price = self.web3.eth.gas_price
             
-            approve_tx = self.mnee_contract.functions.approve(
-                SAVINGS_ADDRESS,
-                amount_wei
-            ).build_transaction({
+            savings_addr = MAINNET_SAVINGS if self.network == 'mainnet' else SEPOLIA_SAVINGS
+            
+            approve_params = {
                 'from': account.address,
                 'nonce': nonce,
                 'gas': 60000,
-                'gasPrice': gas_price
-            })
+            }
+            
+            if self.network == 'sepolia':
+                approve_params['gasPrice'] = self.web3.eth.gas_price
+            else:
+                fee_data = self.web3.eth.fee_history(1, 'latest')
+                base_fee = fee_data['baseFeePerGas'][-1]
+                approve_params['maxFeePerGas'] = int(base_fee * 2)
+                approve_params['maxPriorityFeePerGas'] = self.web3.to_wei(2, 'gwei')
+            
+            approve_tx = self.mnee_contract.functions.approve(
+                savings_addr,
+                amount_wei
+            ).build_transaction(approve_params)
             
             signed_approve = self.web3.eth.account.sign_transaction(approve_tx, private_key)
             approve_hash = self.web3.eth.send_raw_transaction(signed_approve.rawTransaction)
             self.web3.eth.wait_for_transaction_receipt(approve_hash, timeout=120)
             
             nonce += 1
+            
+            deposit_params = {
+                'from': account.address,
+                'nonce': nonce,
+                'gas': 150000,
+            }
+            
+            if self.network == 'sepolia':
+                deposit_params['gasPrice'] = self.web3.eth.gas_price
+            else:
+                fee_data = self.web3.eth.fee_history(1, 'latest')
+                base_fee = fee_data['baseFeePerGas'][-1]
+                deposit_params['maxFeePerGas'] = int(base_fee * 2)
+                deposit_params['maxPriorityFeePerGas'] = self.web3.to_wei(2, 'gwei')
+            
             deposit_tx = self.savings_contract.functions.depositFromAgent(
                 plan_id,
                 amount_wei,
                 Web3.to_checksum_address(agent_address)
-            ).build_transaction({
-                'from': account.address,
-                'nonce': nonce,
-                'gas': 150000,
-                'gasPrice': gas_price
-            })
+            ).build_transaction(deposit_params)
             
             signed_deposit = self.web3.eth.account.sign_transaction(deposit_tx, private_key)
             tx_hash = self.web3.eth.send_raw_transaction(signed_deposit.rawTransaction)
@@ -400,7 +432,7 @@ class RecurringExecutor:
             logger.error(f"Error depositing to savings: {e}")
             return None
     
-   def calculate_next_date(self, frequency: PaymentFrequency, execution_time: str) -> datetime:
+    def calculate_next_date(self, frequency: PaymentFrequency, execution_time: str) -> datetime:
         """Calculate next execution date based on frequency"""
         now = datetime.utcnow()
         
@@ -432,7 +464,7 @@ class RecurringExecutor:
         
         return next_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
     
-   async def decrypt_agent_key(self, encrypted_key: str, user_address: str) -> Optional[str]:
+    async def decrypt_agent_key(self, encrypted_key: str, user_address: str) -> Optional[str]:
         """
         Decrypt agent wallet private key
         
@@ -724,10 +756,11 @@ class SQLiteRecurringDatabase(RecurringDatabase):
 
 if __name__ == "__main__":
     async def main():
-        logger.info("🚀 Initializing Recurring Payment Executor...")
+        network = os.getenv('EXECUTOR_NETWORK', 'mainnet')
+        logger.info(f"🚀 Initializing Recurring Payment Executor... network={network}")
         
         db = SQLiteRecurringDatabase()
-        executor = RecurringExecutor(db)
+        executor = RecurringExecutor(db, network=network)
         
         await executor.start()
         

@@ -327,7 +327,7 @@ const AutomationSummary = ({ schedules, savingsPlans }) => {
   );
 };
 
-export default function Dashboard({ vaultData, vaultBalance, transactions = [], account, onRefresh }) {
+export default function Dashboard({ vaultData, vaultBalance, transactions = [], account, onRefresh, explorerUrl }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [schedules, setSchedules] = useState([]);
   const [savingsPlans, setSavingsPlans] = useState([]);
@@ -661,14 +661,14 @@ export default function Dashboard({ vaultData, vaultBalance, transactions = [], 
               {new Date(tx.timestamp * 1000).toLocaleTimeString()}
             </div>
             {tx.txHash && (
-              <a 
-                href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="tx-link"
-              >
-                VIEW
-              </a>
+            <a 
+  href={`${explorerUrl}/tx/${tx.txHash}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="tx-link"
+>
+  VIEW
+</a>
             )}
           </div>
         </div>

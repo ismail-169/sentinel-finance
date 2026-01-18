@@ -191,16 +191,17 @@ class RecurringScheduler {
   }
 
   
-  createSavingsPlan({
+ createSavingsPlan({
     name,
     amount,
     frequency,
     lockDays,
+    lockType = 0,
     startDate = null,
     executionTime = '09:00',
     reason = '',
     isRecurring = true,
-    savingsPlanId = null  
+    savingsPlanId = null
   }) {
     const id = `save_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -226,13 +227,14 @@ class RecurringScheduler {
       }
     }
 
-    const plan = {
+   const plan = {
       id,
       type: PaymentType.SAVINGS,
       name,
       amount: parseFloat(amount),
       frequency: isRecurring ? frequency : null,
       lockDays,
+      lockType,
       executionTime,
       startDate: startDate || new Date().toISOString(),
       nextDeposit: isRecurring ? calculateNextDate(frequency, startDate, executionTime) : null,

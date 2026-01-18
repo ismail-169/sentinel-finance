@@ -31,7 +31,7 @@ const NETWORKS = {
     explorer: 'https://sepolia.etherscan.io',
     mneeToken: '0x250ff89cf1518F42F3A4c927938ED73444491715',
     vaultFactory: '0xfD3af9554C45211c228B8E7498B26A325669A484',
-    savingsContract: '0x21955e81ca4063f41080d12d3113F6ec54E7b692',
+    savingsContract: '0xcF493dB2D2B4BffB8A38f961276019D5a00480DB',
     isTestnet: true
   },
   mainnet: {
@@ -41,8 +41,8 @@ const NETWORKS = {
     rpcUrl: 'https://eth.llamarpc.com',
     explorer: 'https://etherscan.io',
     mneeToken: '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF',
-    vaultFactory: '0x0000000000000000000000000000000000000000',
-    savingsContract: '', // Not deployed yet
+    vaultFactory: '0x4061a452ce5927c2420060eb7a680798b86e0117',
+    savingsContract: '0xb1c74612c81fe8f685c1a3586d753721847d4549',
     isTestnet: false
   }
 };
@@ -797,12 +797,13 @@ const loadAgentTransactions = useCallback(async () => {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-             <Dashboard
+          <Dashboard
   vaultData={vaultData}
   vaultBalance={vaultData?.balance || '0'}
   transactions={[...transactions, ...agentTransactions].sort((a, b) => b.timestamp - a.timestamp)}
   account={account}
   onRefresh={loadVaultData}
+  explorerUrl={NETWORKS[selectedNetwork]?.explorer || 'https://etherscan.io'}
 />
             </motion.div>
           )}
@@ -841,13 +842,14 @@ const loadAgentTransactions = useCallback(async () => {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-              <TransactionList
+             <TransactionList
   key="transactions"
   transactions={[...transactions, ...agentTransactions].sort((a, b) => b.timestamp - a.timestamp)}
   contract={vault}
   account={account}
   onRevoke={loadVaultData}
   onExecute={loadVaultData}
+  explorerUrl={NETWORKS[selectedNetwork]?.explorer || 'https://etherscan.io'}
 />
             </motion.div>
           )}
@@ -885,7 +887,7 @@ const loadAgentTransactions = useCallback(async () => {
               transition={{ duration: 0.2 }}
               style={{ width: '100%' }}
             >
-            <VaultStats 
+           <VaultStats 
   vaultData={vaultData}
   vendors={vendors}
   contract={vault}
@@ -894,6 +896,8 @@ const loadAgentTransactions = useCallback(async () => {
   onRemoveVendor={removeVendorFromStorage}
   account={account}
   scheduler={scheduler}
+  explorerUrl={NETWORKS[selectedNetwork]?.explorer || 'https://etherscan.io'}
+  networkConfig={NETWORKS[selectedNetwork]}
 />
             </motion.div>
           )}

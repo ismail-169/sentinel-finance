@@ -74,7 +74,7 @@ const StatBox = ({ icon: Icon, label, value, subValue, color, delay }) => (
   </motion.div>
 );
 
-const VendorCard = ({ vendor, onRemove, isTrusted }) => {
+const VendorCard = ({ vendor, onRemove, isTrusted, explorerUrl }) => {
   const [copied, setCopied] = useState(false);
 
   const copyAddress = () => {
@@ -102,7 +102,7 @@ const VendorCard = ({ vendor, onRemove, isTrusted }) => {
               <button className="v-btn" onClick={copyAddress}>
                 {copied ? <CheckCircle size={12}/> : <Copy size={12}/>}
               </button>
-              <a className="v-btn" href={`https://sepolia.etherscan.io/address/${vendor.address}`} target="_blank" rel="noreferrer">
+             <a className="v-btn" href={`${explorerUrl}/address/${vendor.address}`} target="_blank" rel="noreferrer">
                 <ExternalLink size={12}/>
               </a>
               {isTrusted && onRemove && (
@@ -687,7 +687,7 @@ const LimitEditor = ({ icon: Icon, label, value, unit, onSave }) => {
   );
 };
 
-export default function VaultStats({ vaultData, vendors = [], contract, onRefresh, onSaveVendor, onRemoveVendor, account }) {
+export default function VaultStats({ vaultData, vendors = [], contract, onRefresh, onSaveVendor, onRemoveVendor, account, explorerUrl, networkConfig }) {
   const [newVendorAddress, setNewVendorAddress] = useState('');
   const [newVendorName, setNewVendorName] = useState('');
   const [addingVendor, setAddingVendor] = useState(false);
@@ -1650,11 +1650,11 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                  </div>
               </div>
 
-              <div className="vendors-lists">
+           <div className="vendors-lists">
                  <div className="list-col">
                     <h4>TRUSTED ({trustedVendors.length})</h4>
                     {trustedVendors.map(v => (
-                       <VendorCard key={v.address} vendor={v} isTrusted={true} onRemove={handleRemoveVendor} />
+                       <VendorCard key={v.address} vendor={v} isTrusted={true} onRemove={handleRemoveVendor} explorerUrl={explorerUrl} />
                     ))}
                     {trustedVendors.length === 0 && <div className="empty">NO TRUSTED VENDORS</div>}
                  </div>
@@ -1662,7 +1662,7 @@ export default function VaultStats({ vaultData, vendors = [], contract, onRefres
                  <div className="list-col">
                     <h4>RECENT UNTRUSTED</h4>
                     {recentVendors.map(v => (
-                       <VendorCard key={v.address} vendor={v} isTrusted={false} />
+                       <VendorCard key={v.address} vendor={v} isTrusted={false} explorerUrl={explorerUrl} />
                     ))}
                     {recentVendors.length === 0 && <div className="empty">NO RECENT ACTIVITY</div>}
                  </div>

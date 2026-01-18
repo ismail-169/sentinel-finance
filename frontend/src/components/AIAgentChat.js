@@ -83,7 +83,10 @@ RESPONSE FORMAT - Always include JSON for actions:
     - startTime is optional, in 24-hour format like "14:00" for 2pm
     - Examples: "every 3 days" → frequency: "custom", intervalDays: 3
                "every 2 weeks" → frequency: "custom", intervalDays: 14
-3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "startTime": "HH:MM", "reason": "description"}
+3. SAVINGS PLANS: {"action": "savings", "name": "plan name", "amount": number, "frequency": "daily|weekly|monthly", "lockDays": number, "lockType": "soft|hard", "startTime": "HH:MM", "reason": "description"}
+    - lockType: "soft" = can cancel anytime (funds returned), "hard" = cannot cancel until unlock date
+    - if user dont specify ask which type the user wants and also state the meaning of each type
+    - Ask user: "Do you want a soft lock (can cancel anytime) or hard lock (locked until maturity)?"
     - CRITICAL: You MUST ask the user for the "lock duration" (days) if they have not specified it.
     - DO NOT generate this JSON if lockDays is unknown. Ask: "For how many days would you like to lock these funds?"
     - Ask user what TIME they want deposits to occur (e.g., "9:00 AM", "6:00 PM")
@@ -561,164 +564,45 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
   }, [account]);
 
   useEffect(() => {
-   
-    let isExecuting = false;
-    
-    const checkAndExecuteDuePayments = async () => {
+    const checkDuePaymentsNotifications = async () => {
       if (!agentManager || !agentManager.hasWallet() || !provider) return;
-      if (isExecuting) return; 
-      
-      isExecuting = true;
       
       try {
-        const now = new Date();
         const balance = await loadAgentBalance();
+        const now = new Date();
         
         for (const schedule of schedules) {
-          if (schedule.paused || schedule.executing) continue;
+          if (schedule.paused) continue;
           const nextDate = new Date(schedule.nextDate);
           
-          if (nextDate <= now) {
-            if (balance >= schedule.amount) {
-            
-             
-              setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: true } : s));
-              
-              addSystemMessage(` AUTO-EXECUTING: ${schedule.amount} MNEE to ${schedule.vendor}`, 'agent');
-              try {
-                const result = await agentManager.sendMNEE(provider, schedule.vendorAddress, schedule.amount.toString(), schedule.reason);
-                if (result.success) {
-                  addSystemMessage(`✅ SENT: ${schedule.amount} MNEE to ${schedule.vendor}`, 'success');
-                 
-                  await logAgentTransaction({
-                    user_address: account,
-                    agent_address: agentManager.getAddress(),
-                    tx_type: 'schedule',
-                    amount: schedule.amount,
-                    destination: schedule.vendorAddress,
-                    destination_name: schedule.vendor,
-                    tx_hash: result.txHash,
-                    status: 'success',
-                    schedule_id: schedule.id
-                  });
-                 
-                  setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, nextDate: calculateNextDate(s.frequency, new Date(), s.startTime, s.intervalDays), notified: false, executing: false } : s));
-                  await loadAgentBalance();
-                  onAgentWalletUpdate && onAgentWalletUpdate();
-                } else {
-                  addSystemMessage(`❌ FAILED: ${result.error}`, 'danger');
-                  await logAgentTransaction({
-                    user_address: account,
-                    agent_address: agentManager.getAddress(),
-                    tx_type: 'schedule',
-                    amount: schedule.amount,
-                    destination: schedule.vendorAddress,
-                    destination_name: schedule.vendor,
-                    status: 'failed',
-                    schedule_id: schedule.id,
-                    error_message: result.error
-                  });
-                 
-                  setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: false } : s));
-                }
-              } catch (err) {
-                addSystemMessage(`❌ ERROR: ${err.message}`, 'danger');
-               
-                setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, executing: false } : s));
-              }
-            } else {
-              if (!schedule.lowBalanceNotified) {
-                const shortfall = schedule.amount - balance;
-              addSystemMessage(`⚠️ LOW BALANCE: Can't pay ${schedule.vendor}. Need ${shortfall.toFixed(2)} more MNEE. Say "top up agent with ${Math.ceil(shortfall * 1.2)} MNEE"`, 'low-balance');
-              setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, lowBalanceNotified: true } : s));
-            }
+          if (nextDate <= now && balance < schedule.amount && !schedule.lowBalanceNotified) {
+            const shortfall = schedule.amount - balance;
+            addSystemMessage(`⚠️ LOW BALANCE: Can't pay ${schedule.vendor}. Need ${shortfall.toFixed(2)} more MNEE.`, 'low-balance');
+            setSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, lowBalanceNotified: true } : s));
           }
         }
-      }
 
-          for (const plan of savingsPlans) {
-        const nextDeposit = new Date(plan.nextDeposit);
-        if (nextDeposit <= now) {
-          if (balance >= plan.amount) {
-           
-            addSystemMessage(`💰 AUTO-DEPOSITING: ${plan.amount} MNEE to "${plan.name}"`, 'savings');
-           
-            if (agentManager.depositToSavings && plan.contractPlanId) {
-              try {
-                const result = await agentManager.depositToSavings(provider, plan.contractPlanId, plan.amount.toString());
-                if (result.success) {
-                  addSystemMessage(`✅ DEPOSITED: ${plan.amount} MNEE to savings`, 'success');
-                  
-                 
-                  await logAgentTransaction({
-                    user_address: account,
-                    agent_address: agentManager.getAddress(),
-                    tx_type: 'savings_deposit',
-                    amount: plan.amount,
-                    destination: agentManager?.networkConfig?.savingsContract || '',
-                    destination_name: plan.name,
-                    tx_hash: result.txHash,
-                    status: 'success',
-                    savings_plan_id: plan.id
-                  });
-                  
-                  try {
-                   const { syncSavingsWithBlockchain } = await import('../hooks/useSavingsData');
-                    const synced = await syncSavingsWithBlockchain(
-                      account,
-                      agentManager?.getAddress(),
-                      provider,
-                      agentManager?.networkConfig?.savingsContract
-                    );
-                    if (synced) {
-                      setSavingsPlans(synced.plans);
-                    }
-                  } catch (e) {}
-                }
-              } catch (err) {
-                addSystemMessage(`❌ Deposit failed: ${err.message}`, 'danger');
-              
-                await logAgentTransaction({
-                  user_address: account,
-                  agent_address: agentManager.getAddress(),
-                  tx_type: 'savings_deposit',
-                  amount: plan.amount,
-                  destination: agentManager?.networkConfig?.savingsContract || '',
-                  destination_name: plan.name,
-                  status: 'failed',
-                  savings_plan_id: plan.id,
-                  error_message: err.message
-                });
-              }
-            }
-
-           setSavingsPlans(prev => prev.map(p => p.id === plan.id ? {
-              ...p,
-              totalSaved: (p.totalSaved || 0) + plan.amount,
-              depositsCompleted: (p.depositsCompleted || 0) + 1,
-              nextDeposit: calculateNextDate(p.frequency, new Date(), p.executionTime),
-              notified: false
-            } : p));
-            await loadAgentBalance();
-          } else if (!plan.lowBalanceNotified) {
+        for (const plan of savingsPlans) {
+          if (!plan.nextDeposit) continue;
+          const nextDeposit = new Date(plan.nextDeposit);
+          if (nextDeposit <= now && balance < plan.amount && !plan.lowBalanceNotified) {
             const shortfall = plan.amount - balance;
             addSystemMessage(`⚠️ LOW BALANCE: Can't deposit to "${plan.name}". Need ${shortfall.toFixed(2)} more MNEE.`, 'low-balance');
             setSavingsPlans(prev => prev.map(p => p.id === plan.id ? { ...p, lowBalanceNotified: true } : p));
           }
         }
-      }
-      } finally {
-        isExecuting = false;
+      } catch (e) {
+        console.warn('Notification check failed:', e);
       }
     };
 
-    checkAndExecuteDuePayments();
-    executionTimerRef.current = setInterval(checkAndExecuteDuePayments, 30000);
+    checkDuePaymentsNotifications();
+    executionTimerRef.current = setInterval(checkDuePaymentsNotifications, 60000);
     
     return () => {
       if (executionTimerRef.current) clearInterval(executionTimerRef.current);
     };
-  }, [schedules, savingsPlans, agentManager, provider, loadAgentBalance, onAgentWalletUpdate]);
+  }, [schedules, savingsPlans, agentManager, provider, loadAgentBalance]);
 
   useEffect(() => {
     const vendorNames = trustedVendors.map(v => v.name).filter(Boolean).slice(0, 5);
@@ -910,6 +794,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     }
     const lockDays = parseInt(intent.lockDays);
     const frequency = intent.frequency || 'weekly';
+    const lockType = intent.lockType === 'hard' ? 1 : 0;
     
     const balanceCheck = await checkAgentBalance(amount, 'savings deposit');
     if (!balanceCheck.sufficient) {
@@ -948,7 +833,7 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       
       addSystemMessage(`⏳ Creating savings plan on blockchain...`, 'info');
       try {
-        const result = await agentManager.createSavingsPlan(provider, intent.name || `${frequency} Savings`, lockDays, amount.toString(), true);
+      const result = await agentManager.createSavingsPlan(provider, intent.name || `${frequency} Savings`, lockDays, amount.toString(), true, lockType);
         if (result.success) {
           contractPlanId = result.planId;
           depositSucceeded = true; 
@@ -1019,12 +904,13 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
       amount: amount,
       frequency: frequency,
       lockDays: lockDays,
+      lockType: lockType,
       targetAmount: targetAmount,
-      totalSaved: depositSucceeded ? amount : 0,  
+      totalSaved: depositSucceeded ? amount : 0,
       totalDeposits: totalDeposits,
-      depositsCompleted: depositSucceeded ? 1 : 0, 
+      depositsCompleted: depositSucceeded ? 1 : 0,
       startDate: now.toISOString(),
-      executionTime: executionTime,  
+      executionTime: executionTime,
       nextDeposit: nextDepositDate,
       unlockDate: unlockDate.toISOString().split('T')[0],
       reason: intent.reason || 'Savings plan',
@@ -1261,7 +1147,11 @@ const calculateNextDate = (frequency, startDate = new Date(), executionTime = nu
     await withdrawTx.wait();
     addSystemMessage(`✅ Withdrawn from vault.`, 'success');
 
-    const MNEE_ADDRESS = agentManager.networkConfig?.mneeToken || '0x250ff89cf1518F42F3A4c927938ED73444491715';
+   const MNEE_ADDRESS = agentManager.networkConfig?.mneeToken;
+if (!MNEE_ADDRESS) {
+  addSystemMessage(`❌ MNEE token address not configured for this network.`, 'danger');
+  return null;
+}
     const ERC20_ABI = [
       'function transfer(address to, uint256 amount) returns (bool)',
       'function balanceOf(address account) view returns (uint256)'

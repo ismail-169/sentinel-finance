@@ -10,19 +10,20 @@ const MNEE_ABI = [
 ];
 
 const SAVINGS_ABI = [
-  "function createPlanWithDeposit(address _vaultAddress, string _name, uint256 _lockDays, bool _isRecurring, uint256 _initialDeposit) returns (uint256 planId)",
+  "function createPlanWithDeposit(address _vaultAddress, string _name, uint256 _lockDays, bool _isRecurring, uint8 _lockType, uint256 _initialDeposit) returns (uint256 planId)",
   "function depositFromAgent(uint256 _planId, uint256 _amount, address _agentWallet)",
   "function deposit(uint256 _planId, uint256 _amount)",
   "function getUserPlans(address _user) view returns (uint256[])",
-  "function getPlan(uint256 _planId) view returns (address owner, address vaultAddress, string name, uint256 totalDeposited, uint256 unlockTime, uint256 createdAt, bool withdrawn, bool isRecurring)",
+  "function getPlan(uint256 _planId) view returns (address owner, address vaultAddress, string name, uint256 totalDeposited, uint256 unlockTime, uint256 createdAt, bool withdrawn, bool isRecurring, uint8 lockType)",
   "function isUnlocked(uint256 _planId) view returns (bool)",
+  "function canCancelNow(uint256 _planId) view returns (bool)",
   "function timeUntilUnlock(uint256 _planId) view returns (uint256)",
   "function getTotalLocked(address _user) view returns (uint256)",
   "function withdraw(uint256 _planId)",
   "function cancelPlan(uint256 _planId)",
-  "event PlanCreated(uint256 indexed planId, address indexed owner, string name, uint256 lockDays)",
-  "event Deposit(uint256 indexed planId, uint256 amount)",
-  "event Withdrawal(uint256 indexed planId, uint256 amount)"
+  "event PlanCreated(uint256 indexed planId, address indexed owner, address indexed vaultAddress, string name, uint256 unlockTime, bool isRecurring, uint8 lockType)",
+  "event DepositMade(uint256 indexed planId, address indexed depositor, uint256 amount, uint256 newTotal)",
+  "event Withdrawn(uint256 indexed planId, address indexed owner, address indexed vaultAddress, uint256 amount)"
 ];
 
 class AgentWalletManager {
@@ -359,7 +360,7 @@ ensureWalletLoaded() {
    * @param {boolean} isRecurring - Is this a recurring plan
    * @returns {Promise<{success: boolean, planId?: number, error?: string}>}
    */
-async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
+async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false, lockType = 0) {
     if (!this.ensureWalletLoaded()) {
       return { success: false, error: 'Agent wallet not set up' };
     }
@@ -409,11 +410,12 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
       );
 
       const createTxOptions = await this.getTransactionOptions(provider, 300000); 
-      const createTx = await savingsContract.createPlanWithDeposit(
-        this.vaultAddress,  
+     const createTx = await savingsContract.createPlanWithDeposit(
+        this.vaultAddress,
         name,
         lockDays,
         isRecurring,
+        lockType,
         amountWei,
         createTxOptions
       );
@@ -463,9 +465,10 @@ async createSavingsPlan(provider, name, lockDays, amount, isRecurring = false) {
         name,
         lockDays,
         amount,
-        isRecurring
+        isRecurring,
+        lockType
       };
-
+      
     } catch (error) {
       console.error('Create savings plan failed:', error);
       return { 

@@ -44,7 +44,10 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-RPC_URL = os.getenv("SEPOLIA_RPC_URL", "https://rpc.sepolia.org")
+SEPOLIA_RPC_URL = os.getenv("SEPOLIA_RPC_URL", "https://rpc.sepolia.org")
+MAINNET_RPC_URL = os.getenv("MAINNET_RPC_URL", "https://eth.llamarpc.com")
+DEFAULT_NETWORK = os.getenv("DEFAULT_NETWORK", "mainnet")
+RPC_URL = MAINNET_RPC_URL if DEFAULT_NETWORK == 'mainnet' else SEPOLIA_RPC_URL
 DEPLOYMENT_PATH = Path(__file__).parent.parent / "deployment.json"
 ABI_PATH = Path(__file__).parent.parent / "artifacts" / "contracts" / "SentinelVault.sol" / "SentinelVault.json"
 
@@ -167,8 +170,10 @@ class AlertNotifier:
             await asyncio.gather(*tasks, return_exceptions=True)
 
 class SentinelWatchdog:
-    def __init__(self):
-        self.w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    def __init__(self, network='mainnet'):
+        self.network = network
+        rpc_url = MAINNET_RPC_URL if network == 'mainnet' else SEPOLIA_RPC_URL
+        self.w3 = Web3(Web3.HTTPProvider(rpc_url))
         self.vault = None
         self.recent_transactions: List[RecentTransaction] = []
         self.running = True
@@ -182,7 +187,7 @@ class SentinelWatchdog:
             "start_time": None
         }
 
-    def load_contract(self):
+   def load_contract(self):
         if not DEPLOYMENT_PATH.exists():
             raise FileNotFoundError("deployment.json not found")
 
@@ -192,13 +197,21 @@ class SentinelWatchdog:
         deployment = json.loads(DEPLOYMENT_PATH.read_text())
         abi = json.loads(ABI_PATH.read_text())["abi"]
 
+        network_deployment = deployment.get('networks', {}).get(self.network, {})
+        if not network_deployment:
+            network_deployment = deployment
+        
+        vault_address = network_deployment.get("vaultFactory") or network_deployment.get("vaultAddress")
+        if not vault_address:
+            raise ValueError(f"No vault address found for network: {self.network}")
+
         self.vault = self.w3.eth.contract(
-            address=Web3.to_checksum_address(deployment["vaultAddress"]),
+            address=Web3.to_checksum_address(vault_address),
             abi=abi
         )
         
         self.last_processed_block = self.w3.eth.block_number
-        logger.info("contract_loaded", address=deployment["vaultAddress"], block=self.last_processed_block)
+        logger.info("contract_loaded", network=self.network, address=vault_address, block=self.last_processed_block)
 
     def calculate_risk_score(self, agent: str, vendor: str, amount: int, is_trusted: bool) -> tuple[float, List[str]]:
         risk_score = 0.0
@@ -450,7 +463,7 @@ class SentinelWatchdog:
         
         self.stats["start_time"] = datetime.utcnow()
 
-        logger.info("watchdog_started", rpc=RPC_URL)
+        logger.info("watchdog_started", network=self.network, rpc=MAINNET_RPC_URL if self.network == 'mainnet' else SEPOLIA_RPC_URL)
 
         try:
             await asyncio.gather(
@@ -463,7 +476,10 @@ class SentinelWatchdog:
             logger.info("watchdog_stopped", stats=self.stats)
 
 async def main():
-    watchdog = SentinelWatchdog()
+    network = os.getenv("WATCHDOG_NETWORK", "mainnet")
+    logger.info("starting_watchdog", network=network)
+    
+    watchdog = SentinelWatchdog(network=network)
     await watchdog.start()
 
 if __name__ == "__main__":
