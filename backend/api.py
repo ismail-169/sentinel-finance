@@ -402,6 +402,7 @@ class SavingsPlanCreate(BaseModel):
     amount: float
     frequency: Optional[str] = None
     lock_days: int
+    lock_type: int = 0
     execution_time: str = "09:00"
     start_date: Optional[str] = None
     next_deposit: Optional[str] = None
