@@ -1531,6 +1531,160 @@ async def recurring_system_health(request: Request):
             "timestamp": datetime.utcnow().isoformat()
         }
 
+
+class AgentWalletRequest(BaseModel):
+    user_address: str
+    agent_address: str
+    vault_address: str
+    encrypted_key: str
+    network: Optional[str] = 'mainnet'
+
+
+@app.post("/api/v1/agent-wallet")
+@limiter.limit("30/minute")
+async def create_or_update_agent_wallet(
+    request: Request,
+    req: AgentWalletRequest,
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Create or update agent wallet in database.
+    Called by frontend when agent wallet is initialized.
+    """
+    if not Web3.is_address(req.user_address):
+        raise HTTPException(status_code=400, detail="Invalid user address")
+    
+    if not Web3.is_address(req.agent_address):
+        raise HTTPException(status_code=400, detail="Invalid agent address")
+    
+    if not Web3.is_address(req.vault_address):
+        raise HTTPException(status_code=400, detail="Invalid vault address")
+    
+    try:
+        success = save_agent_wallet(
+            user_address=req.user_address.lower(),
+            agent_address=req.agent_address.lower(),
+            vault_address=req.vault_address.lower(),
+            encrypted_key=req.encrypted_key
+        )
+        
+        if success:
+            logger.info(
+                "agent_wallet_saved",
+                user=req.user_address,
+                agent=req.agent_address,
+                network=req.network
+            )
+            return {
+                "success": True,
+                "message": "Agent wallet saved",
+                "user_address": req.user_address.lower(),
+                "agent_address": req.agent_address.lower()
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save agent wallet")
+            
+    except Exception as e:
+        logger.error("agent_wallet_save_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/agent-wallet/{user_address}")
+@limiter.limit(settings.rate_limit)
+async def get_agent_wallet_endpoint(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Get agent wallet for user.
+    Returns agent wallet details without the encrypted private key.
+    """
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    try:
+        wallet = get_agent_wallet(user_address.lower())
+        
+        if not wallet:
+            return {
+                "exists": False,
+                "user_address": user_address.lower()
+            }
+        
+        return {
+            "exists": True,
+            "user_address": wallet['user_address'],
+            "agent_address": wallet['agent_address'],
+            "vault_address": wallet['vault_address'],
+            "created_at": wallet['created_at'].isoformat() if hasattr(wallet['created_at'], 'isoformat') else wallet['created_at']
+        }
+        
+    except Exception as e:
+        logger.error("agent_wallet_get_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/v1/agent-wallet/{user_address}")
+@limiter.limit("10/minute")
+async def delete_agent_wallet_endpoint(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Delete agent wallet for user.
+    Called when user clears their agent wallet.
+    """
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    try:
+        success = delete_agent_wallet(user_address.lower())
+        
+        if success:
+            logger.info("agent_wallet_deleted", user=user_address)
+            return {
+                "success": True,
+                "message": "Agent wallet deleted",
+                "user_address": user_address.lower()
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Agent wallet not found or already deleted"
+            }
+            
+    except Exception as e:
+        logger.error("agent_wallet_delete_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/agent-wallet/{user_address}/exists")
+@limiter.limit(settings.rate_limit)
+async def check_agent_wallet_exists(
+    request: Request,
+    user_address: str,
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Quick check if agent wallet exists for user.
+    Lightweight endpoint for frontend initialization.
+    """
+    if not Web3.is_address(user_address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    
+    try:
+        wallet = get_agent_wallet(user_address.lower())
+        return {
+            "exists": wallet is not None,
+            "user_address": user_address.lower(),
+            "agent_address": wallet['agent_address'] if wallet else None
+        }
+    except Exception as e:
+        logger.error("agent_wallet_check_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(
         app,

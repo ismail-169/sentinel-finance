@@ -436,6 +436,22 @@ class RecurringExecutor:
             if encrypted_key.startswith('0x') or len(encrypted_key) == 64:
                 return encrypted_key
             
+            if encrypted_key.startswith('enc_'):
+                import base64
+                import hashlib
+                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+                
+                salt = 'sentinel_agent_v2_'
+                key_material = hashlib.sha256((salt + user_address.lower()).encode()).digest()
+                
+                encrypted_data = base64.b64decode(encrypted_key[4:])
+                iv = encrypted_data[:12]
+                ciphertext = encrypted_data[12:]
+                
+                aesgcm = AESGCM(key_material)
+                decrypted = aesgcm.decrypt(iv, ciphertext, None)
+                return decrypted.decode()
+            
             encryption_key = os.getenv('AGENT_ENCRYPTION_KEY')
             if encryption_key:
                 from cryptography.fernet import Fernet
