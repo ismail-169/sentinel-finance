@@ -1,5 +1,3 @@
-
-
 const SCHEDULES_KEY = 'sentinel_schedules_';
 const SAVINGS_KEY = 'sentinel_savings_';
 
@@ -92,11 +90,16 @@ export function getDaysUntil(dateString) {
 }
 
 class RecurringScheduler {
-  constructor(userAddress, apiUrl = '') {
+  constructor(userAddress, apiUrl = '', network = 'mainnet') {
     this.userAddress = userAddress?.toLowerCase();
     this.apiUrl = apiUrl;
+    this.network = network;
     this.schedules = [];
     this.savingsPlans = [];
+  }
+
+  setNetwork(network) {
+    this.network = network;
   }
 
   
@@ -177,6 +180,7 @@ class RecurringScheduler {
       reason,
       isTrusted,
       isActive: true,
+      network: this.network,
       createdAt: new Date().toISOString(),
       lastExecuted: null,
       executionCount: 0,
@@ -247,6 +251,7 @@ class RecurringScheduler {
       depositsCompleted: 0,
       totalSaved: 0,
       targetAmount: parseFloat(amount) * totalDeposits,
+      network: this.network,
       createdAt: new Date().toISOString(),
       lastDeposit: null
     };

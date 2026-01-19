@@ -322,39 +322,45 @@ def init_db():
 
 
 
-def save_agent_wallet(user_address: str, agent_address: str, vault_address: str, encrypted_key: str) -> bool:
+def save_agent_wallet(user_address: str, agent_address: str, vault_address: str, encrypted_key: str, network: str = 'mainnet') -> bool:
     with get_connection() as conn:
         cursor = conn.cursor()
         now_iso = datetime.utcnow().isoformat()
         
-        cursor.execute("SELECT id FROM agent_wallets WHERE user_address = %s", (user_address.lower(),))
+        cursor.execute("SELECT id FROM agent_wallets WHERE user_address = %s AND network = %s", (user_address.lower(), network))
         existing = cursor.fetchone()
         
         if existing:
             cursor.execute("""
                 UPDATE agent_wallets 
                 SET agent_address = %s, vault_address = %s, encrypted_key = %s, updated_at = %s
-                WHERE user_address = %s
-            """, (agent_address.lower(), vault_address.lower(), encrypted_key, now_iso, user_address.lower()))
+                WHERE user_address = %s AND network = %s
+            """, (agent_address.lower(), vault_address.lower(), encrypted_key, now_iso, user_address.lower(), network))
         else:
             cursor.execute("""
-                INSERT INTO agent_wallets (user_address, agent_address, vault_address, encrypted_key, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (user_address.lower(), agent_address.lower(), vault_address.lower(), encrypted_key, now_iso, now_iso))
+                INSERT INTO agent_wallets (user_address, agent_address, vault_address, encrypted_key, network, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (user_address.lower(), agent_address.lower(), vault_address.lower(), encrypted_key, network, now_iso, now_iso))
         
         return cursor.rowcount > 0
 
-def get_agent_wallet(user_address: str) -> Optional[Dict[str, Any]]:
+def get_agent_wallet(user_address: str, network: str = None) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM agent_wallets WHERE user_address = %s", (user_address.lower(),))
+        if network:
+            cursor.execute("SELECT * FROM agent_wallets WHERE user_address = %s AND network = %s", (user_address.lower(), network))
+        else:
+            cursor.execute("SELECT * FROM agent_wallets WHERE user_address = %s", (user_address.lower(),))
         row = cursor.fetchone()
         return dict(row) if row else None
 
-def delete_agent_wallet(user_address: str) -> bool:
+def delete_agent_wallet(user_address: str, network: str = None) -> bool:
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM agent_wallets WHERE user_address = %s", (user_address.lower(),))
+        if network:
+            cursor.execute("DELETE FROM agent_wallets WHERE user_address = %s AND network = %s", (user_address.lower(), network))
+        else:
+            cursor.execute("DELETE FROM agent_wallets WHERE user_address = %s", (user_address.lower(),))
         return cursor.rowcount > 0
 
 
@@ -393,8 +399,8 @@ def save_recurring_schedule(schedule: Dict[str, Any]) -> bool:
                     id, user_address, agent_address, vault_address, payment_type,
                     vendor, vendor_address, amount, frequency, execution_time,
                     start_date, next_execution, reason, is_trusted, is_active,
-                    created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    network, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 schedule['id'],
                 schedule['user_address'].lower(),
@@ -411,6 +417,7 @@ def save_recurring_schedule(schedule: Dict[str, Any]) -> bool:
                 schedule.get('reason', ''),
                 1 if schedule.get('is_trusted', False) else 0,
                 1 if schedule.get('is_active', True) else 0,
+                schedule.get('network', 'mainnet'),
                 now_iso, now_iso
             ))
         
@@ -593,8 +600,8 @@ def save_savings_plan(plan: Dict[str, Any]) -> bool:
                     id, user_address, agent_address, vault_address, contract_plan_id,
                     name, amount, frequency, lock_days, lock_type, execution_time,
                     start_date, next_deposit, unlock_date, reason, is_recurring,
-                    is_active, total_deposits, target_amount, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    is_active, total_deposits, target_amount, network, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 plan['id'],
                 plan['user_address'].lower(),
@@ -615,6 +622,7 @@ def save_savings_plan(plan: Dict[str, Any]) -> bool:
                 1 if plan.get('is_active', True) else 0,
                 plan.get('total_deposits', 1),
                 plan['target_amount'],
+                plan.get('network', 'mainnet'),
                 now_iso, now_iso
             ))
         

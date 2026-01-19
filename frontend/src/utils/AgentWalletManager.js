@@ -235,8 +235,9 @@ class AgentWalletManager {
 
   async loadFromBackend() {
     try {
+      const network = this.networkConfig?.name || 'mainnet';
       const response = await fetch(
-        `${API_URL}/api/v1/agent-wallet/${this.userAddress}`,
+        `${API_URL}/api/v1/agent-wallet/${this.userAddress}?network=${network}`,
         {
           headers: {
             'X-API-Key': API_KEY
@@ -259,8 +260,9 @@ class AgentWalletManager {
 
   async deleteFromBackend() {
     try {
+      const network = this.networkConfig?.name || 'mainnet';
       const response = await fetch(
-        `${API_URL}/api/v1/agent-wallet/${this.userAddress}`,
+        `${API_URL}/api/v1/agent-wallet/${this.userAddress}?network=${network}`,
         {
           method: 'DELETE',
           headers: {

@@ -1537,7 +1537,7 @@ class AgentWalletRequest(BaseModel):
     agent_address: str
     vault_address: str
     encrypted_key: str
-    network: Optional[str] = 'mainnet'
+    network: str = 'mainnet'
 
 
 @app.post("/api/v1/agent-wallet")
@@ -1560,12 +1560,16 @@ async def create_or_update_agent_wallet(
     if not Web3.is_address(req.vault_address):
         raise HTTPException(status_code=400, detail="Invalid vault address")
     
+    if req.network not in ['sepolia', 'mainnet']:
+        raise HTTPException(status_code=400, detail="Invalid network. Must be 'sepolia' or 'mainnet'")
+    
     try:
         success = save_agent_wallet(
             user_address=req.user_address.lower(),
             agent_address=req.agent_address.lower(),
             vault_address=req.vault_address.lower(),
-            encrypted_key=req.encrypted_key
+            encrypted_key=req.encrypted_key,
+            network=req.network
         )
         
         if success:
@@ -1594,6 +1598,7 @@ async def create_or_update_agent_wallet(
 async def get_agent_wallet_endpoint(
     request: Request,
     user_address: str,
+    network: str = None,
     auth: bool = Depends(verify_api_key)
 ):
     """
@@ -1604,12 +1609,13 @@ async def get_agent_wallet_endpoint(
         raise HTTPException(status_code=400, detail="Invalid address")
     
     try:
-        wallet = get_agent_wallet(user_address.lower())
+        wallet = get_agent_wallet(user_address.lower(), network)
         
         if not wallet:
             return {
                 "exists": False,
-                "user_address": user_address.lower()
+                "user_address": user_address.lower(),
+                "network": network
             }
         
         return {
@@ -1617,6 +1623,7 @@ async def get_agent_wallet_endpoint(
             "user_address": wallet['user_address'],
             "agent_address": wallet['agent_address'],
             "vault_address": wallet['vault_address'],
+            "network": wallet.get('network', 'mainnet'),
             "created_at": wallet['created_at'].isoformat() if hasattr(wallet['created_at'], 'isoformat') else wallet['created_at']
         }
         
@@ -1630,6 +1637,7 @@ async def get_agent_wallet_endpoint(
 async def delete_agent_wallet_endpoint(
     request: Request,
     user_address: str,
+    network: str = None,
     auth: bool = Depends(verify_api_key)
 ):
     """
@@ -1640,7 +1648,7 @@ async def delete_agent_wallet_endpoint(
         raise HTTPException(status_code=400, detail="Invalid address")
     
     try:
-        success = delete_agent_wallet(user_address.lower())
+        success = delete_agent_wallet(user_address.lower(), network)
         
         if success:
             logger.info("agent_wallet_deleted", user=user_address)
@@ -1665,6 +1673,7 @@ async def delete_agent_wallet_endpoint(
 async def check_agent_wallet_exists(
     request: Request,
     user_address: str,
+    network: str = None,
     auth: bool = Depends(verify_api_key)
 ):
     """
@@ -1675,11 +1684,12 @@ async def check_agent_wallet_exists(
         raise HTTPException(status_code=400, detail="Invalid address")
     
     try:
-        wallet = get_agent_wallet(user_address.lower())
+        wallet = get_agent_wallet(user_address.lower(), network)
         return {
             "exists": wallet is not None,
             "user_address": user_address.lower(),
-            "agent_address": wallet['agent_address'] if wallet else None
+            "agent_address": wallet['agent_address'] if wallet else None,
+            "network": wallet.get('network', 'mainnet') if wallet else network
         }
     except Exception as e:
         logger.error("agent_wallet_check_failed", error=str(e))
