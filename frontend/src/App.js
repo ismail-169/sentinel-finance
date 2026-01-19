@@ -559,7 +559,7 @@ const loadAgentTransactions = useCallback(async () => {
         }
       }
       
-           const sched = new RecurringScheduler(account, API_URL);
+          const sched = new RecurringScheduler(account, API_URL, selectedNetwork);
       sched.load();
       setScheduler(sched);
     }
