@@ -762,7 +762,7 @@ const createSchedule = async (intent) => {
       }
     }
     
-    const newSchedule = {
+   const newSchedule = {
       id: `sched_${Date.now()}`,
       vendor: vendor.name || intent.vendor,
       vendorAddress: vendor.address,
@@ -778,7 +778,8 @@ const createSchedule = async (intent) => {
       useAgentWallet: true,
       createdAt: new Date().toISOString(),
       notified: false,
-      lowBalanceNotified: false
+      lowBalanceNotified: false,
+      network: agentManager?.networkConfig?.name?.toLowerCase() || 'mainnet'
     };
 
     setSchedules(prev => [...prev, newSchedule]);
@@ -1570,9 +1571,10 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCoun
           execution_time: s.startTime || s.executionTime || '09:00',
           start_date: s.createdAt || new Date().toISOString(),
           next_execution: s.nextDate || s.nextRun,
-          reason: s.reason || '',
+        reason: s.reason || '',
           is_trusted: s.isTrusted || false,
-          is_active: !s.paused
+          is_active: !s.paused,
+          network: s.network || agentManager?.networkConfig?.name?.toLowerCase() || 'mainnet'
         }));
       }
       
@@ -1594,8 +1596,9 @@ const syncToBackend = async (syncSchedules = true, syncSavings = true, retryCoun
           unlock_date: p.unlockDate,
           target_amount: parseFloat(p.targetAmount) || parseFloat(p.amount) * 12,
           total_saved: parseFloat(p.totalSaved || p.totalDeposited) || 0,
-          is_active: p.status === 'active' || !p.paused,
-          withdrawn: p.withdrawn || false
+         is_active: p.status === 'active' || !p.paused,
+          withdrawn: p.withdrawn || false,
+          network: p.network || agentManager?.networkConfig?.name?.toLowerCase() || 'mainnet'
         }));
       }
       
