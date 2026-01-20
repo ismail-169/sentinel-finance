@@ -491,18 +491,26 @@
                 <div class="sidebar-title">GETTING STARTED</div>
                 <a href="#overview" class="sidebar-link active" onclick="showSection('overview')">Overview</a>
                 <a href="#quickstart" class="sidebar-link" onclick="showSection('quickstart')">Quick Start</a>
-             <a href="#architecture" class="sidebar-link" onclick="showSection('architecture')">Architecture</a>
+                <a href="#networks" class="sidebar-link" onclick="showSection('networks')">Networks</a>
+                <a href="#architecture" class="sidebar-link" onclick="showSection('architecture')">Architecture</a>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-title">CORE CONCEPTS</div>
                 <a href="#three-wallet" class="sidebar-link" onclick="showSection('three-wallet')">Three-Wallet System</a>
+                <a href="#agent-wallet" class="sidebar-link" onclick="showSection('agent-wallet')">Agent Wallet</a>
                 <a href="#clawback" class="sidebar-link" onclick="showSection('clawback')">Clawback System</a>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">FEATURES</div>
+                <a href="#recurring-payments" class="sidebar-link" onclick="showSection('recurring-payments')">Recurring Payments</a>
+                <a href="#savings-plans" class="sidebar-link" onclick="showSection('savings-plans')">Savings Plans</a>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-title">SMART CONTRACTS</div>
                 <a href="#contracts" class="sidebar-link" onclick="showSection('contracts')">Contract Reference</a>
                 <a href="#vault" class="sidebar-link" onclick="showSection('vault')">SentinelVault</a>
                 <a href="#factory" class="sidebar-link" onclick="showSection('factory')">VaultFactory</a>
+                <a href="#savings-contract" class="sidebar-link" onclick="showSection('savings-contract')">SentinelSavings</a>
             </div>
             
             <div class="sidebar-section">
@@ -533,6 +541,10 @@
                 <h1>Sentinel Finance</h1>
                 <p class="subtitle">AI-Powered Security Infrastructure for MNEE Stablecoin</p>
                 
+                <div class="alert info" style="background: rgba(0, 204, 102, 0.1); border-color: var(--accent-emerald); color: var(--accent-emerald);">
+                    <strong>🌐 Dual Network Support:</strong> Sentinel Finance is fully operational on both Ethereum Mainnet and Sepolia Testnet. Switch networks seamlessly in the app.
+                </div>
+                
                 <p>Sentinel Finance provides a secure vault system that protects your MNEE holdings from unauthorized AI agent transactions. With built-in timelocks, spending limits, and real-time risk scoring, you maintain full control while enabling AI automation.</p>
                 
                 <div class="feature-grid">
@@ -552,12 +564,21 @@
                         <h4>📊 Risk Scoring</h4>
                         <p>AI-powered risk analysis flags suspicious transactions before execution.</p>
                     </div>
+                    <div class="feature-card">
+                        <h4>🔄 Recurring Payments</h4>
+                        <p>Schedule automated payments to vendors - daily, weekly, or monthly with your Agent Wallet.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>💰 Savings Plans</h4>
+                        <p>Lock funds with soft or hard lock periods for disciplined saving goals.</p>
+                    </div>
                 </div>
                 
                 <h2>How It Works</h2>
                 <ol style="margin-left: 24px; margin-bottom: 24px;">
                     <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Create a Vault</strong> - Deploy your personal SentinelVault smart contract</li>
                     <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Deposit MNEE</strong> - Fund your vault with MNEE tokens</li>
+                    <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Setup Agent Wallet</strong> - Create an automated wallet for recurring tasks</li>
                     <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Configure Security</strong> - Set limits, timelock duration, and trusted vendors</li>
                     <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Connect AI Agents</strong> - Your AI can request payments through the vault</li>
                     <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Monitor & Control</strong> - Review pending transactions and revoke suspicious ones</li>
@@ -699,6 +720,10 @@ Response:
                     <div class="card-title">VaultFactory</div>
                     <code>0xfD3af9554C45211c228B8E7498B26A325669A484</code>
                 </div>
+                <div class="card">
+                    <div class="card-title">SentinelSavings</div>
+                    <code>0xcF493dB2D2B4BffB8A38f961276019D5a00480DB</code>
+                </div>
                 
                 <h2>Ethereum Mainnet</h2>
                 <div class="card">
@@ -707,7 +732,11 @@ Response:
                 </div>
                 <div class="card">
                     <div class="card-title">VaultFactory</div>
-                    <code>Coming Soon</code>
+                    <code>0x4061a452ce5927c2420060eb7a680798b86e0117</code>
+                </div>
+                <div class="card">
+                    <div class="card-title">SentinelSavings</div>
+                    <code>0xb1c74612c81fe8f685c1a3586d753721847d4549</code>
                 </div>
             </section>
             
@@ -846,6 +875,71 @@ Response:
                     </div>
                 </div>
                 
+                <h2>Agent Wallet</h2>
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge post">POST</span>
+                        <span class="endpoint-path">/api/v1/agent-wallet</span>
+                        <span class="endpoint-desc">Create or update agent wallet</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <h4 style="color: var(--text-primary);">Request Body</h4>
+                        <table class="param-table">
+                            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+                            <tr><td>user_address <span class="required">REQUIRED</span></td><td>string</td><td>Owner wallet address</td></tr>
+                            <tr><td>agent_address <span class="required">REQUIRED</span></td><td>string</td><td>Agent wallet address</td></tr>
+                            <tr><td>vault_address <span class="required">REQUIRED</span></td><td>string</td><td>Associated vault address</td></tr>
+                            <tr><td>encrypted_key <span class="required">REQUIRED</span></td><td>string</td><td>AES-GCM encrypted private key</td></tr>
+                            <tr><td>network</td><td>string</td><td>"sepolia" or "mainnet" (default: mainnet)</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge get">GET</span>
+                        <span class="endpoint-path">/api/v1/agent-wallet/{user_address}</span>
+                        <span class="endpoint-desc">Get agent wallet info</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <h4 style="color: var(--text-primary);">Query Parameters</h4>
+                        <table class="param-table">
+                            <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                            <tr><td>network</td><td>string</td><td>Filter by network (optional)</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <h2>Recurring Payments</h2>
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge post">POST</span>
+                        <span class="endpoint-path">/api/v1/recurring/sync</span>
+                        <span class="endpoint-desc">Sync schedules and savings plans</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <h4 style="color: var(--text-primary);">Request Body</h4>
+                        <table class="param-table">
+                            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+                            <tr><td>user_address <span class="required">REQUIRED</span></td><td>string</td><td>User wallet address</td></tr>
+                            <tr><td>schedules</td><td>array</td><td>Array of recurring schedule objects</td></tr>
+                            <tr><td>savings_plans</td><td>array</td><td>Array of savings plan objects</td></tr>
+                        </table>
+                        <p style="margin-top: 12px;">Each schedule object includes: id, vendor, vendor_address, amount, frequency, execution_time, next_execution, network, is_active</p>
+                    </div>
+                </div>
+                
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge get">GET</span>
+                        <span class="endpoint-path">/api/v1/recurring/{user_address}</span>
+                        <span class="endpoint-desc">Get all recurring data</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <p>Returns all schedules and savings plans for the user.</p>
+                    </div>
+                </div>
+                
                 <h2>AI Agent</h2>
                 <div class="endpoint" onclick="this.classList.toggle('open')">
                     <div class="endpoint-header">
@@ -864,6 +958,24 @@ Response:
                             <tr><td>amount <span class="required">REQUIRED</span></td><td>string</td><td>Amount in MNEE</td></tr>
                             <tr><td>reason <span class="required">REQUIRED</span></td><td>string</td><td>Payment reason</td></tr>
                             <tr><td>private_key <span class="required">REQUIRED</span></td><td>string</td><td>Agent wallet private key (server-side only!)</td></tr>
+                            <tr><td>network</td><td>string</td><td>"sepolia" or "mainnet"</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="endpoint" onclick="this.classList.toggle('open')">
+                    <div class="endpoint-header">
+                        <span class="badge get">GET</span>
+                        <span class="endpoint-path">/api/v1/agent/transactions/{user_address}</span>
+                        <span class="endpoint-desc">Get agent transaction history</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <p>Returns execution history for automated payments and savings deposits.</p>
+                        <h4 style="color: var(--text-primary);">Query Parameters</h4>
+                        <table class="param-table">
+                            <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                            <tr><td>limit</td><td>integer</td><td>Max results (default: 50)</td></tr>
+                            <tr><td>tx_type</td><td>string</td><td>Filter by type: "payment" or "savings" (optional)</td></tr>
                         </table>
                     </div>
                 </div>
@@ -880,6 +992,10 @@ Response:
                     <tr><td>payment.executed</td><td>Payment successfully executed</td></tr>
                     <tr><td>payment.revoked</td><td>Payment was revoked</td></tr>
                     <tr><td>alert.high_risk</td><td>High-risk transaction detected</td></tr>
+                    <tr><td>recurring.executed</td><td>Recurring payment executed</td></tr>
+                    <tr><td>recurring.failed</td><td>Recurring payment failed</td></tr>
+                    <tr><td>savings.created</td><td>Savings plan created</td></tr>
+                    <tr><td>savings.withdrawn</td><td>Savings funds withdrawn</td></tr>
                 </table>
                 
                 <h2>Configuration</h2>
@@ -888,6 +1004,39 @@ Response:
 ALERT_WEBHOOK_URL=https://your-server.com/webhook
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 </div>
+            </section>
+            
+            <section id="networks" class="content-section">
+                <h1>Supported Networks</h1>
+                <p class="subtitle">Choose your network based on your needs</p>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>🧪 Sepolia Testnet</h4>
+                        <p>Perfect for testing and development. Use free test MNEE from the faucet. No real funds at risk.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🌐 Ethereum Mainnet</h4>
+                        <p>Production environment with real MNEE tokens. Full security and protection for your assets.</p>
+                    </div>
+                </div>
+                
+                <h2>Network Switching</h2>
+                <p>Switch networks using the network selector in the top-right of the app. Your vault, agent wallet, schedules, and savings plans are network-specific - data on Sepolia is separate from Mainnet.</p>
+                
+                <div class="alert warning">
+                    <strong>Important:</strong> Always verify you're on the correct network before making transactions. Agent wallets and recurring schedules are network-specific.
+                </div>
+                
+                <h2>Network-Specific Data</h2>
+                <p>The following are stored separately per network:</p>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>Vault contracts and balances</li>
+                    <li>Agent wallets and their encrypted private keys</li>
+                    <li>Recurring payment schedules</li>
+                    <li>Savings plans and locked funds</li>
+                    <li>Transaction history</li>
+                </ul>
             </section>
             
             <section id="architecture" class="content-section">
@@ -903,9 +1052,15 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
                           │                      │
                           ▼                      ▼
                     ┌──────────────┐     ┌─────────────┐
-                    │  Watchdog    │     │ MNEE Token  │
-                    │  (Monitor)   │     │  (ERC-20)   │
+                    │  Recurring   │     │ MNEE Token  │
+                    │  Executor    │     │  (ERC-20)   │
                     └──────────────┘     └─────────────┘
+                          │
+                          ▼
+                    ┌──────────────┐
+                    │  Sentinel    │
+                    │  Savings     │
+                    └──────────────┘
 </div>
            </section>
 
@@ -939,6 +1094,216 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
         <div class="alert danger">
             <strong>Security Feature:</strong> If an AI agent is compromised, the owner can instantly trigger a "Clawback" to pull all funds from the Agent Wallet back into the Main Vault.
         </div>
+        
+        <h2>How to Clawback</h2>
+        <p>Use the AI Chat with any of these commands:</p>
+        <div class="code-block">
+"Clawback agent funds"
+"Withdraw all from agent wallet"
+"Pull everything from agent"
+</div>
+        <p>Or use the Clawback button in the Agent Wallet panel.</p>
+        
+        <div class="alert warning">
+            <strong>Note:</strong> Clawback only affects MNEE in the agent wallet. Funds in active savings plans remain locked according to their lock type.
+        </div>
+    </section>
+    
+    <section id="agent-wallet" class="content-section">
+        <h1>Agent Wallet</h1>
+        <p class="subtitle">Automated wallet for recurring operations</p>
+        
+        <p>The Agent Wallet is a separate wallet managed by Sentinel that executes automated tasks like recurring payments and savings deposits without requiring manual approval for each transaction.</p>
+        
+        <h2>How It Works</h2>
+        <ol style="margin-left: 24px; margin-bottom: 24px;">
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Creation</strong> - A new Ethereum wallet is generated in your browser</li>
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Encryption</strong> - Private key is encrypted with AES-GCM before storage</li>
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Funding</strong> - Transfer MNEE from your vault to the agent wallet</li>
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Execution</strong> - Backend uses encrypted key to sign transactions</li>
+        </ol>
+        
+        <h2>Security Features</h2>
+        <ul style="margin-left: 24px; margin-bottom: 24px;">
+            <li><strong style="color: var(--text-primary);">Encrypted Storage</strong> - Private keys are AES-GCM encrypted</li>
+            <li><strong style="color: var(--text-primary);">Limited Funds</strong> - Only hold what's needed for scheduled payments</li>
+            <li><strong style="color: var(--text-primary);">Trusted Vendors Only</strong> - Can only pay whitelisted addresses</li>
+            <li><strong style="color: var(--text-primary);">Clawback</strong> - Instantly recall all funds to your main vault</li>
+            <li><strong style="color: var(--text-primary);">Network Specific</strong> - Separate wallets for Sepolia and Mainnet</li>
+        </ul>
+        
+        <h2>Funding the Agent Wallet</h2>
+        <p>Use the AI Chat to fund your agent wallet:</p>
+        <div class="code-block">
+"Fund agent wallet with 500 MNEE"
+"Add 100 MNEE to agent"
+"Top up agent wallet"
+</div>
+        
+        <h2>Withdrawing from Agent Wallet</h2>
+        <p>Return funds to your main vault:</p>
+        <div class="code-block">
+"Withdraw all from agent wallet"
+"Pull 200 MNEE from agent to vault"
+"Clawback agent funds"
+</div>
+        
+        <div class="alert danger">
+            <strong>ETH for Gas:</strong> The agent wallet needs a small amount of ETH to pay gas fees. Send 0.01-0.05 ETH to cover transaction costs.
+        </div>
+    </section>
+    
+    <section id="recurring-payments" class="content-section">
+        <h1>Recurring Payments</h1>
+        <p class="subtitle">Automate your scheduled payments</p>
+        
+        <p>Recurring payments allow you to schedule automatic MNEE transfers to trusted vendors. The system uses your Agent Wallet to execute payments at specified intervals without manual intervention.</p>
+        
+        <h2>How It Works</h2>
+        <ol style="margin-left: 24px; margin-bottom: 24px;">
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Setup Agent Wallet</strong> - Create and fund an agent wallet with MNEE</li>
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Add Trusted Vendor</strong> - Whitelist the recipient address</li>
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Create Schedule</strong> - Specify amount, frequency, and start time</li>
+            <li style="margin-bottom: 12px;"><strong style="color: var(--text-primary);">Automatic Execution</strong> - Backend executor processes payments automatically</li>
+        </ol>
+        
+        <h2>Frequency Options</h2>
+        <table class="param-table">
+            <tr><th>Frequency</th><th>Interval</th><th>Use Case</th></tr>
+            <tr><td>Daily</td><td>Every 24 hours</td><td>Subscription services, daily allowances</td></tr>
+            <tr><td>Weekly</td><td>Every 7 days</td><td>Weekly bills, recurring services</td></tr>
+            <tr><td>Biweekly</td><td>Every 14 days</td><td>Payroll, semi-monthly payments</td></tr>
+            <tr><td>Monthly</td><td>Every 30 days</td><td>Rent, monthly subscriptions</td></tr>
+        </table>
+        
+        <h2>Creating via AI Chat</h2>
+        <p>Use natural language to create schedules:</p>
+        <div class="code-block">
+"Pay Walter 50 MNEE every week"
+"Send 100 MNEE to rent monthly starting next Monday at 9am"
+"Schedule daily payment of 10 MNEE to subscription_service"
+</div>
+        
+        <h2>Managing Schedules</h2>
+        <p>View and manage all schedules in the Recurring Payments tab:</p>
+        <ul style="margin-left: 24px; margin-bottom: 24px;">
+            <li><strong style="color: var(--text-primary);">Pause/Resume</strong> - Temporarily stop payments without deleting</li>
+            <li><strong style="color: var(--text-primary);">Cancel</strong> - Permanently delete a schedule</li>
+            <li><strong style="color: var(--text-primary);">Execute Now</strong> - Trigger immediate payment</li>
+        </ul>
+        
+        <div class="alert warning">
+            <strong>Agent Wallet Balance:</strong> Ensure your agent wallet has sufficient MNEE balance. If balance is low, payments will fail until funded.
+        </div>
+        
+        <div class="alert info">
+            <strong>Network Specific:</strong> Schedules are tied to the network they were created on. A Sepolia schedule will only execute on Sepolia, not Mainnet.
+        </div>
+    </section>
+    
+    <section id="savings-plans" class="content-section">
+        <h1>Savings Plans</h1>
+        <p class="subtitle">Lock funds for disciplined saving</p>
+        
+        <p>Savings plans allow you to lock MNEE tokens for a specified period. Choose between soft locks (can cancel anytime) or hard locks (funds locked until maturity).</p>
+        
+        <h2>Lock Types</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>🔓 Soft Lock</h4>
+                <p>Flexible savings - cancel anytime and get your funds back. Perfect for emergency funds or short-term goals.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🔒 Hard Lock</h4>
+                <p>Strict discipline - funds cannot be withdrawn until unlock date. Best for long-term savings goals.</p>
+            </div>
+        </div>
+        
+        <h2>Creating a Savings Plan</h2>
+        <p>Use natural language in the AI Chat:</p>
+        <div class="code-block">
+"Save 100 MNEE for 30 days with soft lock"
+"Create a hard lock savings of 500 MNEE for 90 days"
+"Lock 1000 MNEE for 6 months"
+</div>
+        
+        <h2>Savings Plan Lifecycle</h2>
+        <table class="param-table">
+            <tr><th>Status</th><th>Description</th><th>Actions Available</th></tr>
+            <tr><td style="color: var(--accent-amber);">Active</td><td>Funds locked, not yet matured</td><td>Cancel (soft lock only)</td></tr>
+            <tr><td style="color: var(--accent-emerald);">Unlocked</td><td>Lock period ended</td><td>Withdraw</td></tr>
+            <tr><td style="color: var(--text-muted);">Withdrawn</td><td>Funds returned to vault</td><td>None</td></tr>
+        </table>
+        
+        <h2>Cancelling Plans</h2>
+        <ul style="margin-left: 24px; margin-bottom: 24px;">
+            <li><strong style="color: var(--accent-emerald);">Soft Lock:</strong> Click "Cancel" to immediately return funds to your vault</li>
+            <li><strong style="color: var(--accent-red);">Hard Lock:</strong> Cannot be cancelled - must wait until unlock date</li>
+        </ul>
+        
+        <div class="alert info">
+            <strong>On-Chain Storage:</strong> All savings plans are stored on the SentinelSavings smart contract. Your funds are secure and verifiable on the blockchain.
+        </div>
+    </section>
+    
+    <section id="savings-contract" class="content-section">
+        <h1>SentinelSavings Contract</h1>
+        <p class="subtitle">On-chain savings plan management</p>
+        
+        <h2>Contract Addresses</h2>
+        <table class="param-table">
+            <tr><th>Network</th><th>Address</th></tr>
+            <tr><td>Sepolia</td><td><code>0xcF493dB2D2B4BffB8A38f961276019D5a00480DB</code></td></tr>
+            <tr><td>Mainnet</td><td><code>0xb1c74612c81fe8f685c1a3586d753721847d4549</code></td></tr>
+        </table>
+        
+        <h2>Functions</h2>
+        
+        <h3>createPlan(uint256 amount, uint256 lockDays, uint8 lockType, string name)</h3>
+        <p>Create a new savings plan with specified lock period.</p>
+        <table class="param-table">
+            <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+            <tr><td>amount</td><td>uint256</td><td>MNEE amount to lock (in wei)</td></tr>
+            <tr><td>lockDays</td><td>uint256</td><td>Number of days to lock</td></tr>
+            <tr><td>lockType</td><td>uint8</td><td>0 = Soft lock, 1 = Hard lock</td></tr>
+            <tr><td>name</td><td>string</td><td>Plan name/description</td></tr>
+        </table>
+        
+        <h3>withdraw(uint256 planId)</h3>
+        <p>Withdraw funds from an unlocked plan. Returns MNEE to caller.</p>
+        
+        <h3>cancelPlan(uint256 planId)</h3>
+        <p>Cancel a soft-lock plan early. Returns MNEE to caller. Fails for hard-lock plans.</p>
+        
+        <h3>getPlan(uint256 planId) → Plan</h3>
+        <p>Get details of a savings plan.</p>
+        
+        <h3>getUserPlans(address user) → uint256[]</h3>
+        <p>Get all plan IDs for a user.</p>
+        
+        <h3>getTotalLocked(address user) → uint256</h3>
+        <p>Get total MNEE locked across all plans for a user.</p>
+        
+        <h2>Plan Structure</h2>
+        <div class="code-block">
+struct Plan {
+    address owner;
+    uint256 amount;
+    uint256 lockDays;
+    uint256 unlockTime;
+    uint8 lockType;      <span class="comment">// 0 = soft, 1 = hard</span>
+    bool withdrawn;
+    string name;
+}
+</div>
+        
+        <h2>Events</h2>
+        <table class="param-table">
+            <tr><th>Event</th><th>Parameters</th><th>Description</th></tr>
+            <tr><td>PlanCreated</td><td>owner, planId, amount, lockDays</td><td>Emitted when a plan is created</td></tr>
+            <tr><td>PlanWithdrawn</td><td>owner, planId, amount</td><td>Emitted when funds are withdrawn</td></tr>
+            <tr><td>PlanCancelled</td><td>owner, planId, amount</td><td>Emitted when a soft-lock plan is cancelled</td></tr>
+        </table>
     </section>
             
             <section id="ai-agents" class="content-section">
@@ -1026,6 +1391,41 @@ AGENT_KEY = os.environ[<span class="string">"AGENT_PRIVATE_KEY"</span>]  <span c
                         <p>On Sepolia testnet, use the faucet to claim 1,000 test MNEE. There's a 1-hour cooldown between claims.</p>
                     </div>
                 </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">Can I use both Sepolia and Mainnet?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>Yes! You can switch networks in the app. Each network has separate vaults, agent wallets, and data. Test on Sepolia first, then switch to Mainnet for production use.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">What's the difference between soft and hard lock savings?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p><strong>Soft Lock:</strong> You can cancel anytime and get your funds back immediately.<br><strong>Hard Lock:</strong> Funds are locked until the unlock date - no early withdrawals possible.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">Why does my agent wallet need ETH?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>The agent wallet pays gas fees for automated transactions like recurring payments. Send a small amount of ETH (0.01-0.05) to cover gas costs.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">Are my recurring schedules network-specific?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>Yes. Schedules created on Sepolia will only execute on Sepolia. If you want recurring payments on Mainnet, create separate schedules there.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item" onclick="this.classList.toggle('open')">
+                    <div class="faq-question">What happens if my agent wallet runs out of MNEE?<span>+</span></div>
+                    <div class="faq-answer">
+                        <p>Scheduled payments will fail until you fund the agent wallet. You'll see failed executions in the dashboard. Simply add more MNEE to resume payments.</p>
+                    </div>
+                </div>
             </section>
             
             <section id="troubleshooting" class="content-section">
@@ -1035,7 +1435,7 @@ AGENT_KEY = os.environ[<span class="string">"AGENT_PRIVATE_KEY"</span>]  <span c
                 <h2>MetaMask Not Connecting</h2>
                 <ul style="margin-left: 24px; margin-bottom: 24px;">
                     <li>Ensure MetaMask is unlocked</li>
-                    <li>Check you're on the correct network (Sepolia for testnet)</li>
+                    <li>Check you're on the correct network (Sepolia for testnet, Ethereum Mainnet for production)</li>
                     <li>Try disconnecting and reconnecting</li>
                 </ul>
                 
@@ -1044,6 +1444,30 @@ AGENT_KEY = os.environ[<span class="string">"AGENT_PRIVATE_KEY"</span>]  <span c
                     <li>Ensure you have enough ETH for gas</li>
                     <li>Check transaction limits haven't been exceeded</li>
                     <li>Verify the vault has sufficient MNEE balance</li>
+                </ul>
+                
+                <h2>Recurring Payments Not Executing</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>Check agent wallet has sufficient MNEE balance</li>
+                    <li>Ensure agent wallet has ETH for gas fees (0.01-0.05 ETH)</li>
+                    <li>Verify the vendor is in your trusted list</li>
+                    <li>Confirm you're on the correct network (schedules are network-specific)</li>
+                    <li>Check the schedule is active (not paused)</li>
+                </ul>
+                
+                <h2>Savings Plan Issues</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li><strong>Can't cancel:</strong> Hard lock plans cannot be cancelled early - must wait until unlock date</li>
+                    <li><strong>Can't withdraw:</strong> Plan hasn't reached unlock date yet</li>
+                    <li><strong>Funds not returned:</strong> Check the transaction completed on block explorer</li>
+                    <li><strong>Plan not showing:</strong> Ensure you're on the same network where the plan was created</li>
+                </ul>
+                
+                <h2>Agent Wallet Issues</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li><strong>Not found error:</strong> Agent wallet is network-specific - create one for each network</li>
+                    <li><strong>Transaction failed:</strong> Agent wallet needs ETH for gas fees</li>
+                    <li><strong>Insufficient balance:</strong> Fund agent wallet with MNEE from your vault</li>
                 </ul>
                 
                 <h2>API Errors</h2>
@@ -1056,11 +1480,23 @@ AGENT_KEY = os.environ[<span class="string">"AGENT_PRIVATE_KEY"</span>]  <span c
                 <h1>Changelog</h1>
                 <p class="subtitle">Version history</p>
                 
+             <h2>v3.1.0 (January 2026)</h2>
+                <ul style="margin-left: 24px; margin-bottom: 24px;">
+                    <li>🌐 Full dual-network support (Sepolia + Mainnet)</li>
+                    <li>🔧 Fixed recurring payments network selection bug</li>
+                    <li>🔧 Fixed agent wallet sync across networks</li>
+                    <li>📊 Dashboard now shows agent transaction history</li>
+                    <li>💾 Network-aware database storage for all entities</li>
+                    <li>🔐 Improved AES-GCM encryption for agent keys</li>
+                    <li>📝 Comprehensive documentation updates</li>
+                </ul>
+                
              <h2>v3.0.0 (January 2026)</h2>
                 <ul style="margin-left: 24px; margin-bottom: 24px;">
                     <li>🚀 Three-wallet architecture implementation</li>
                     <li>⏪ Clawback system for emergency recovery</li>
-                    <li>💰 Savings plans with lock periods</li>
+                    <li>💰 Savings plans with soft/hard lock periods</li>
+                    <li>🔄 Recurring payments with automated execution</li>
                     <li>🤖 Multi-provider AI Chat (Claude, GPT-4, Grok)</li>
                     <li>Multi-user vault factory system</li>
                     <li>AI agent payment API</li>
