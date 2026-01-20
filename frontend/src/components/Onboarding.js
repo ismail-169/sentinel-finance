@@ -229,7 +229,7 @@ export default function Onboarding({
     setDepositAmount(walletBalance);
   };
 
-  const needsEth = parseFloat(ethBalance) < 0.001;
+  const needsEth = parseFloat(ethBalance) < 0.0001;
 
   const renderStep = () => {
     switch (step) {
