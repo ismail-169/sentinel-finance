@@ -313,7 +313,7 @@ class RecurringExecutor:
             ).build_transaction(tx_params)
             
             signed_tx = web3.eth.account.sign_transaction(tx, private_key)
-            tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
             
             receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
             
@@ -364,7 +364,7 @@ class RecurringExecutor:
             })
             
             signed_approve = web3.eth.account.sign_transaction(approve_tx, private_key)
-            approve_hash = web3.eth.send_raw_transaction(signed_approve.rawTransaction)
+            approve_hash = web3.eth.send_raw_transaction(signed_approve.raw_transaction)
             web3.eth.wait_for_transaction_receipt(approve_hash, timeout=120)
             
             nonce += 1
@@ -381,7 +381,7 @@ class RecurringExecutor:
             })
             
             signed_deposit = web3.eth.account.sign_transaction(deposit_tx, private_key)
-            deposit_hash = web3.eth.send_raw_transaction(signed_deposit.rawTransaction)
+            deposit_hash = web3.eth.send_raw_transaction(signed_deposit.raw_transaction)
             
             receipt = web3.eth.wait_for_transaction_receipt(deposit_hash, timeout=120)
             
