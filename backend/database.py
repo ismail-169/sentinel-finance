@@ -203,6 +203,7 @@ def init_db():
                 agent_address TEXT UNIQUE NOT NULL,
                 vault_address TEXT NOT NULL,
                 encrypted_key TEXT NOT NULL,
+                network TEXT DEFAULT 'mainnet',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -225,6 +226,7 @@ def init_db():
                 reason TEXT DEFAULT '',
                 is_trusted INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
+                network TEXT DEFAULT 'mainnet',
                 execution_count INTEGER DEFAULT 0,
                 failed_count INTEGER DEFAULT 0,
                 last_executed TEXT,
@@ -447,7 +449,7 @@ def get_due_schedules(before: datetime) -> List[Dict[str, Any]]:
         cursor.execute("""
             SELECT s.*, a.encrypted_key, a.agent_address
             FROM recurring_schedules s
-            LEFT JOIN agent_wallets a ON s.user_address = a.user_address
+            LEFT JOIN agent_wallets a ON s.user_address = a.user_address AND s.network = a.network
             WHERE s.is_active = 1 AND s.next_execution <= %s
             ORDER BY s.next_execution ASC
         """, (before.isoformat(),))

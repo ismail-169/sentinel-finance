@@ -1262,7 +1262,7 @@ async def sync_recurring_data(
         'id', 'user_address', 'vault_address', 'agent_address', 'vendor', 
         'vendor_address', 'amount', 'frequency', 'interval_days', 'payment_type',
         'execution_time', 'start_date', 'next_execution', 'reason', 
-        'is_trusted', 'is_active'
+        'is_trusted', 'is_active', 'network'
     }
     
    
