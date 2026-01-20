@@ -762,6 +762,7 @@ const createSchedule = async (intent) => {
       }
     }
     
+  console.log('🔥 CREATE SCHEDULE DEBUG:', { agentManager, networkConfig: agentManager?.networkConfig, networkName: agentManager?.networkConfig?.name, final: agentManager?.networkConfig?.name?.toLowerCase() || 'mainnet' });
    const newSchedule = {
       id: `sched_${Date.now()}`,
       vendor: vendor.name || intent.vendor,
