@@ -661,7 +661,7 @@ def get_due_savings_deposits(before: datetime) -> List[Dict[str, Any]]:
         cursor.execute("""
             SELECT p.*, a.encrypted_key, a.agent_address as wallet_agent_address
             FROM savings_plans p
-            LEFT JOIN agent_wallets a ON p.user_address = a.user_address
+            LEFT JOIN agent_wallets a ON p.user_address = a.user_address AND p.network = a.network
             WHERE p.is_active = 1 AND p.is_recurring = 1 
                 AND p.withdrawn = 0 AND p.next_deposit <= %s
             ORDER BY p.next_deposit ASC

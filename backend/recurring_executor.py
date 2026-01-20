@@ -209,13 +209,14 @@ class RecurringExecutor:
             agent_wallet = await self.db.get_agent_wallet(payment.user_address, network_name)
             if not agent_wallet:
                 logger.error(f"Agent wallet not found for {payment.user_address} on {network_name}")
-                await self.db.update_payment_failure(payment.id, f"Agent wallet not found on {network_name}")
+                await self.db.update_payment_failure(payment.id, f"Agent wallet not found on {network_name}", payment.user_address, payment.destination)
+
                 return
             
             private_key = await self.decrypt_agent_key(agent_wallet.encrypted_key, payment.user_address)
             if not private_key:
                 logger.error("Failed to decrypt agent wallet key")
-                await self.db.update_payment_failure(payment.id, "Failed to decrypt key")
+                await self.db.update_payment_failure(payment.id, "Failed to decrypt key", payment.user_address, payment.destination)
                 return
             
             amount_wei = web3.to_wei(payment.amount, 'ether')
@@ -225,7 +226,7 @@ class RecurringExecutor:
             
             if balance < amount_wei:
                 logger.warning(f"Insufficient balance on {network_name}: {balance} < {amount_wei}")
-                await self.db.update_payment_failure(payment.id, f"Insufficient balance on {network_name}")
+                await self.db.update_payment_failure(payment.id, f"Insufficient balance on {network_name}", payment.user_address, payment.destination)
                 await self.create_notification(
                     payment.user_address,
                     "low_balance",
@@ -237,7 +238,7 @@ class RecurringExecutor:
                 validation = self.is_valid_destination(payment.destination, payment.vault_address)
                 if not validation['valid']:
                     logger.error(f"Invalid destination: {payment.destination}")
-                    await self.db.update_payment_failure(payment.id, validation['reason'])
+                    await self.db.update_payment_failure(payment.id, validation['reason'], payment.user_address, payment.destination)
                     return
                 
                 tx_hash = await self.send_to_vendor(
@@ -252,16 +253,16 @@ class RecurringExecutor:
             
             if tx_hash:
                 next_date = self.calculate_next_date(payment.frequency, payment.execution_time)
-                await self.db.update_payment_execution(payment.id, tx_hash, next_date, payment.amount)
+                await self.db.update_payment_execution(payment.id, tx_hash, next_date, payment.amount, payment.user_address, payment.destination)
                 
                 logger.info(f"✅ Payment executed on {network_name}: {tx_hash}")
             else:
                 logger.error("Payment execution failed - no tx hash")
-                await self.db.update_payment_failure(payment.id, "Transaction failed")
+                await self.db.update_payment_failure(payment.id, "Transaction failed", payment.user_address, payment.destination)
                 
         except Exception as e:
             logger.error(f"Error executing payment {payment.id}: {e}")
-            await self.db.update_payment_failure(payment.id, str(e))
+            await self.db.update_payment_failure(payment.id, str(e), payment.user_address, payment.destination)
     
     async def get_agent_balance(self, agent_address: str, network_name: str = 'mainnet') -> int:
         try:
@@ -624,38 +625,38 @@ class PostgreSQLRecurringDatabase(RecurringDatabase):
             network=row.get('network', 'mainnet')
         )
     
-    async def update_payment_execution(self, payment_id: str, tx_hash: str, next_date: datetime, amount: float):
+    async def update_payment_execution(self, payment_id: str, tx_hash: str, next_date: datetime, amount: float, user_address: str = '', destination: str = ''):
         from database import update_schedule_execution, update_savings_deposit, log_execution
-        
+    
         if payment_id.startswith('sched_'):
             update_schedule_execution(payment_id, tx_hash, next_date.isoformat())
         else:
             update_savings_deposit(payment_id, amount, next_date.isoformat(), tx_hash)
-        
+    
         log_execution(
             schedule_id=payment_id if payment_id.startswith('sched_') else None,
             savings_plan_id=payment_id if not payment_id.startswith('sched_') else None,
-            user_address='',
+            user_address=user_address,
             execution_type='auto',
             amount=amount,
-            destination='',
+            destination=destination,
             tx_hash=tx_hash,
             status='success'
         )
     
-    async def update_payment_failure(self, payment_id: str, error: str):
+    async def update_payment_failure(self, payment_id: str, error: str, user_address: str = '', destination: str = ''):
         from database import update_schedule_failure, log_execution
-        
+    
         if payment_id.startswith('sched_'):
             update_schedule_failure(payment_id, error)
-        
+    
         log_execution(
             schedule_id=payment_id if payment_id.startswith('sched_') else None,
             savings_plan_id=payment_id if not payment_id.startswith('sched_') else None,
-            user_address='',
+            user_address=user_address,
             execution_type='auto',
             amount=0,
-            destination='',
+            destination=destination,
             tx_hash=None,
             status='failed',
             error_message=error
