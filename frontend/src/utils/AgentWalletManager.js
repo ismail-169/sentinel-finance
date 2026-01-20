@@ -211,7 +211,7 @@ class AgentWalletManager {
           agent_address: address,
           vault_address: this.vaultAddress,
           encrypted_key: encryptedKey,
-          network: this.networkConfig?.name || 'mainnet'
+         network: (this.networkConfig?.name || 'mainnet').toLowerCase()
         })
       });
 
@@ -235,7 +235,7 @@ class AgentWalletManager {
 
   async loadFromBackend() {
     try {
-      const network = this.networkConfig?.name || 'mainnet';
+      const network = (this.networkConfig?.name || 'mainnet').toLowerCase();
       const response = await fetch(
         `${API_URL}/api/v1/agent-wallet/${this.userAddress}?network=${network}`,
         {
