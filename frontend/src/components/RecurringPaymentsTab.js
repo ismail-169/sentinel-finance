@@ -27,11 +27,34 @@ export default function RecurringPaymentsTab({
     }
   }, [scheduler]);
 
-  const loadData = () => {
-    const data = scheduler.load();
-    setSchedules(data.schedules || []);
-    setSavingsPlans(data.savingsPlans || []);
-  };
+  const loadData = async () => {
+  
+  const localData = scheduler.load();
+  setSchedules(localData.schedules || []);
+  setSavingsPlans(localData.savingsPlans || []);
+  
+  
+  try {
+    const response = await fetch(`${API_URL}/api/v1/recurring/${account}`);
+    if (response.ok) {
+      const backendData = await response.json();
+      
+      if (backendData.schedules) {
+        backendData.schedules.forEach(s => {
+          scheduler.updateScheduleFromBackend(s.id, {
+            nextExecution: s.next_execution,
+            executionCount: s.execution_count,
+            failedCount: s.failed_count
+          });
+        });
+        const updated = scheduler.load();
+        setSchedules(updated.schedules || []);
+      }
+    }
+  } catch (e) {
+    console.warn('Backend sync failed:', e);
+  }
+};
 
   useEffect(() => {
     const handleSavingsUpdate = (event) => {

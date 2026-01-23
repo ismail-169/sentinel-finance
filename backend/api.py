@@ -1270,7 +1270,7 @@ async def sync_recurring_data(
         'id', 'user_address', 'vault_address', 'agent_address', 'contract_plan_id',
         'name', 'amount', 'frequency', 'lock_days', 'execution_time', 'start_date',
         'next_deposit', 'unlock_date', 'target_amount', 'total_saved', 
-        'is_active', 'withdrawn', 'reason'
+        'is_active', 'withdrawn', 'reason', 'network'
     }
     
     try:
