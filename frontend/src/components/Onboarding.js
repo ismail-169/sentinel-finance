@@ -6,6 +6,7 @@ import {
   Loader, AlertCircle, Coins, ChevronLeft, ExternalLink, Copy, Fuel
 } from 'lucide-react';
 import sentinelLogo from '../sentinel-logo.png';
+import rockwalletLogo from '../rockwallet-logo.svg';
 
 export default function Onboarding({ 
   account,
@@ -366,11 +367,41 @@ export default function Onboarding({
               )}
 
               {!needsEth && parseFloat(walletBalance) === 0 && network !== 'sepolia' && (
-                <div style={{ textAlign: 'center', width: '100%' }}>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                    TRANSFER MNEE TO YOUR WALLET TO CONTINUE
+                <div className="get-mnee-section">
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px', textAlign: 'center' }}>
+                    GET MNEE TO CONTINUE
                   </p>
-                  <button className="refresh-btn" onClick={loadBalanceAndStatus} disabled={refreshing}>
+                  
+                  <a 
+                    href="https://rockwallet.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="rockwallet-btn"
+                  >
+                    <div className="rockwallet-content">
+                      <div className="rockwallet-logo">
+                        <img src={rockwalletLogo} alt="RockWallet" style={{ width: '28px', height: '28px' }} />
+                      </div>
+                      <div className="rockwallet-text">
+                        <span className="rockwallet-title">GET MNEE ON ROCKWALLET</span>
+                        <span className="rockwallet-desc">BUY OR SWAP ETH → MNEE</span>
+                      </div>
+                      <ExternalLink size={14} />
+                    </div>
+                    <div className="rockwallet-badge">MNEE PARTNER</div>
+                  </a>
+
+                  <div className="wallet-box" style={{ marginTop: '16px' }}>
+                    <span className="wallet-label">YOUR WALLET ADDRESS:</span>
+                    <div className="wallet-row">
+                      <code>{account?.slice(0, 12)}...{account?.slice(-10)}</code>
+                      <button className="copy-btn" onClick={copyAddress}>
+                        {copied ? <Check size={12} /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button className="refresh-btn" onClick={loadBalanceAndStatus} disabled={refreshing} style={{ marginTop: '16px' }}>
                     {refreshing ? <Loader size={12} className="spin" /> : <Loader size={12} />}
                     {refreshing ? 'REFRESHING...' : 'REFRESH BALANCE'}
                   </button>
@@ -690,6 +721,67 @@ export default function Onboarding({
           text-decoration: none;
         }
         .faucet-link:hover { background: var(--border-color, #ffcc00); color: var(--bg-primary, #1a1a1a); }
+
+        .get-mnee-section {
+          width: 100%;
+          text-align: center;
+        }
+
+        .rockwallet-btn {
+          display: block;
+          width: 100%;
+          padding: 16px;
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+          border: 2px solid #00d4aa;
+          text-decoration: none;
+          margin-bottom: 12px;
+          transition: all 0.2s;
+          position: relative;
+          overflow: hidden;
+        }
+        .rockwallet-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 20px rgba(0, 212, 170, 0.3);
+          border-color: #00ffcc;
+        }
+        .rockwallet-content {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: #00d4aa;
+        }
+        .rockwallet-logo {
+          flex-shrink: 0;
+        }
+        .rockwallet-text {
+          flex: 1;
+          text-align: left;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .rockwallet-title {
+          font-family: var(--font-pixel);
+          font-size: 12px;
+          font-weight: 700;
+          color: #00d4aa;
+        }
+        .rockwallet-desc {
+          font-family: var(--font-mono);
+          font-size: 10px;
+          color: #00d4aa99;
+        }
+        .rockwallet-badge {
+          position: absolute;
+          top: 0;
+          right: 0;
+          background: #00d4aa;
+          color: #1a1a2e;
+          font-family: var(--font-pixel);
+          font-size: 8px;
+          font-weight: 700;
+          padding: 4px 8px;
+        }
 
         .refresh-btn {
           width: 100%;
